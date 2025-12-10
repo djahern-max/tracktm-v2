@@ -75,15 +75,31 @@ def root():
         }
     }
 
+CATEGORY_ORDER = ['EQUIPMENT', 'MATERIALS', 'PPE', 'CONSUMABLES', 'FUEL']
+
+# Then replace the get_materials function:
 @app.get("/api/materials", response_model=List[MaterialResponse])
 def get_materials(category: Optional[str] = None, db: Session = Depends(get_db)):
-    """Get all materials, optionally filtered by category"""
+    """Get all materials in the correct category order"""
     query = db.query(Material)
     
     if category:
         query = query.filter(Material.category == category)
+        materials = query.order_by(Material.name).all()
+    else:
+        # Get all materials and sort by custom category order
+        all_materials = query.all()
+        
+        # Sort by category order, then by name within category
+        def sort_key(mat):
+            try:
+                cat_index = CATEGORY_ORDER.index(mat.category)
+            except ValueError:
+                cat_index = 999
+            return (cat_index, mat.name)
+        
+        materials = sorted(all_materials, key=sort_key)
     
-    materials = query.order_by(Material.category, Material.name).all()
     return [mat.to_dict() for mat in materials]
 
 @app.get("/api/materials/categories")

@@ -331,3 +331,218 @@ function showMessage(message, type = 'info') {
     
     setTimeout(() => messageDiv.remove(), 5000);
 }
+
+// Enhanced export functions
+
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+        weekday: 'short', 
+        year: 'numeric', 
+        month: 'short', 
+        day: 'numeric' 
+    });
+}
+
+function formatCurrency(amount) {
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD'
+    }).format(amount);
+}
+
+// Enhanced detailed export with breakdown by category
+async function exportDetailed() {
+    const jobNumber = document.getElementById('jobNumber').value;
+    const companyName = document.getElementById('companyName').value || 'Company Name';
+    const jobName = document.getElementById('jobName').value || '';
+    
+    if (!jobNumber) {
+        alert('Please enter job number');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/entries/${jobNumber}/summary`);
+        const data = await response.json();
+        
+        if (data.summary) {
+            // Get detailed data for all entries
+            const entriesResponse = await fetch(`${API_BASE}/entries?job_number=${jobNumber}`);
+            const entriesData = await entriesResponse.json();
+            
+            const csv = generateDetailedCSV(data.summary, entriesData.entries, companyName, jobName);
+            const today = new Date().toISOString().split('T')[0];
+            downloadCSV(csv, `Job_${jobNumber}_Detailed_${today}.csv`);
+        } else {
+            alert('No entries found for this job');
+        }
+    } catch (error) {
+        console.error('Error exporting:', error);
+        alert('Failed to export detailed report');
+    }
+}
+
+// Generate enhanced summary CSV
+function generateEnhancedCSV(summary, companyName, jobName) {
+    const lines = [];
+    const today = new Date();
+    const reportDate = today.toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+    });
+    
+    // Header
+    lines.push(companyName);
+    lines.push('Time & Materials Summary Report');
+    lines.push('');
+    lines.push(`Job Number:,${summary.job_number}`);
+    if (jobName) lines.push(`Job Name:,${jobName}`);
+    lines.push(`Report Generated:,${reportDate}`);
+    lines.push('');
+    
+    // Summary
+    lines.push('SUMMARY');
+    lines.push('─────────────────────────────────────');
+    lines.push(`Total Days:,${summary.total_days}`);
+    lines.push(`Grand Total:,${formatCurrency(summary.grand_total)}`);
+    lines.push('');
+    
+    // Daily breakdown
+    lines.push('DAILY BREAKDOWN');
+    lines.push('─────────────────────────────────────');
+    lines.push('Date,Day,Items,Daily Total');
+    
+    summary.entries.forEach(entry => {
+        const date = new Date(entry.date);
+        const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+        const formattedDate = date.toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric',
+            year: 'numeric'
+        });
+        lines.push(`${formattedDate},${dayName},${entry.item_count},${formatCurrency(entry.total)}`);
+    });
+    
+    lines.push('─────────────────────────────────────');
+    lines.push(`TOTAL:,,${summary.entries.reduce((sum, e) => sum + e.item_count, 0)},${formatCurrency(summary.grand_total)}`);
+    
+    return lines.join('\n');
+}
+
+// Generate detailed breakdown CSV with all items
+function generateDetailedCSV(summary, entries, companyName, jobName) {
+    const lines = [];
+    const today = new Date();
+    const reportDate = today.toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+    });
+    
+    // Header
+    lines.push(companyName);
+    lines.push('Time & Materials Detailed Report');
+    lines.push('');
+    lines.push(`Job Number:,${summary.job_number}`);
+    if (jobName) lines.push(`Job Name:,${jobName}`);
+    lines.push(`Report Generated:,${reportDate}`);
+    lines.push('');
+    
+    // Aggregate items across all days by category
+    const itemTotals = {};
+    
+    entries.forEach(entry => {
+        entry.line_items.forEach(item => {
+            const key = `${item.category}|${item.material_name}|${item.unit}|${item.unit_price}`;
+            if (!itemTotals[key]) {
+                itemTotals[key] = {
+                    category: item.category,
+                    name: item.material_name,
+                    unit: item.unit,
+                    unit_price: item.unit_price,
+                    total_quantity: 0,
+                    total_amount: 0
+                };
+            }
+            itemTotals[key].total_quantity += item.quantity;
+            itemTotals[key].total_amount += item.total_amount;
+        });
+    });
+    
+    // Group by category
+    const byCategory = {};
+    Object.values(itemTotals).forEach(item => {
+        if (!byCategory[item.category]) {
+            byCategory[item.category] = [];
+        }
+        byCategory[item.category].push(item);
+    });
+    
+    // Category order
+    const categoryOrder = ['EQUIPMENT', 'MATERIALS', 'PPE', 'CONSUMABLES', 'FUEL'];
+    
+    // Output by category
+    lines.push('DETAILED BREAKDOWN BY CATEGORY');
+    lines.push('═════════════════════════════════════════════════════════════');
+    lines.push('');
+    
+    categoryOrder.forEach(category => {
+        if (byCategory[category]) {
+            lines.push(category);
+            lines.push('─────────────────────────────────────────────────────────────');
+            lines.push('Item,Unit,Quantity,Unit Price,Total');
+            
+            byCategory[category].forEach(item => {
+                lines.push(`${item.name},${item.unit},${item.total_quantity},${formatCurrency(item.unit_price)},${formatCurrency(item.total_amount)}`);
+            });
+            
+            const categoryTotal = byCategory[category].reduce((sum, item) => sum + item.total_amount, 0);
+            lines.push(`${category} SUBTOTAL:,,,,${formatCurrency(categoryTotal)}`);
+            lines.push('');
+        }
+    });
+    
+    lines.push('═════════════════════════════════════════════════════════════');
+    lines.push(`GRAND TOTAL:,,,,${formatCurrency(summary.grand_total)}`);
+    
+    return lines.join('\n');
+}
+
+// Update the existing exportJob function
+async function exportJob() {
+    const jobNumber = document.getElementById('jobNumber').value;
+    const companyName = document.getElementById('companyName').value || 'Company Name';
+    const jobName = document.getElementById('jobName').value || '';
+    
+    if (!jobNumber) {
+        alert('Please enter job number');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/entries/${jobNumber}/summary`);
+        const data = await response.json();
+        
+        if (data.summary) {
+            const csv = generateEnhancedCSV(data.summary, companyName, jobName);
+            const today = new Date().toISOString().split('T')[0];
+            downloadCSV(csv, `Job_${jobNumber}_Summary_${today}.csv`);
+        } else {
+            alert('No entries found for this job');
+        }
+    } catch (error) {
+        console.error('Error exporting:', error);
+        alert('Failed to export job summary');
+    }
+}
+
+// Add event listener for detailed export button
+document.addEventListener('DOMContentLoaded', function() {
+    const existingInit = init;
+    init = async function() {
+        await existingInit();
+        document.getElementById('exportDetailedBtn').addEventListener('click', exportDetailed);
+    };
+});

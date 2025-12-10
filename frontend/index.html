@@ -10,11 +10,19 @@
     <div class="container">
         <!-- Header -->
         <header class="header">
-            <h1>TSI Daily Timesheet Entry</h1>
+            <h1>Daily Timesheet Entry</h1>
             <div class="header-info">
+                <div class="info-group">
+                    <label>Company Name:</label>
+                    <input type="text" id="companyName" placeholder="Your Company Name" />
+                </div>
                 <div class="info-group">
                     <label>Job Number:</label>
                     <input type="text" id="jobNumber" value="2317" />
+                </div>
+                <div class="info-group">
+                    <label>Job Name:</label>
+                    <input type="text" id="jobName" placeholder="Project description" />
                 </div>
                 <div class="info-group">
                     <label>Date:</label>
@@ -33,7 +41,8 @@
         <!-- Actions -->
         <div class="actions-bar" id="actionsBar" style="display: none;">
             <button id="saveBtn" class="btn btn-primary">💾 Save Entry</button>
-            <button id="exportBtn" class="btn btn-success">📊 Export Job Summary</button>
+            <button id="exportBtn" class="btn btn-success">📊 Export Summary</button>
+            <button id="exportDetailedBtn" class="btn btn-success">📋 Export Detailed</button>
             <div class="total-display">
                 <span>Daily Total:</span>
                 <strong id="dailyTotal">$0.00</strong>

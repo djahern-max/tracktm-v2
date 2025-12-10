@@ -4,6 +4,31 @@ Based on provided price list - December 2024
 """
 
 MATERIALS_CATALOG = {
+    "EQUIPMENT": [
+        {"name": "Ford F-250", "unit": "Day", "unit_price": 175.00},
+        {"name": "Honda Generator", "unit": "Day", "unit_price": 62.00},
+    ],
+    
+    "MATERIALS": [
+        {"name": "Epoxy mastic 2 gal kit", "unit": "Kit", "unit_price": 145.48},
+        {"name": "Mek - 5 Gal", "unit": "Gallon", "unit_price": 19.85},
+        {"name": "Reducer #58 5 gal", "unit": "Gallon", "unit_price": 27.32},
+    ],
+    
+    "PPE": [
+        {"name": "Concentra- Blood lead", "unit": "Test", "unit_price": 136.00},
+        {"name": "Coveralls/ Tyvek", "unit": "Each", "unit_price": 4.98},
+        {"name": "Dbl eye face shield", "unit": "Each", "unit_price": 8.35},
+        {"name": "Ear Plugs", "unit": "Pair", "unit_price": 0.18},
+        {"name": "Gloves Blue & Yellow", "unit": "Pair", "unit_price": 6.15},
+        {"name": "Gloves Gray & White", "unit": "Pair", "unit_price": 3.10},
+        {"name": "Gloves Latex/ Nitrile", "unit": "Box", "unit_price": 14.20},
+        {"name": "Head Socks", "unit": "Each", "unit_price": 0.81},
+        {"name": "P100 filters", "unit": "Each", "unit_price": 8.87},
+        {"name": "Safety Glasses/ Clear", "unit": "Pair", "unit_price": 1.42},
+        {"name": "Safety Glasses/ Tinted", "unit": "Pair", "unit_price": 1.42},
+    ],
+    
     "CONSUMABLES": [
         {"name": "AA Batteries - 10 pack", "unit": "Pack", "unit_price": 10.87},
         {"name": "4\" roller naps", "unit": "Each", "unit_price": 9.64},
@@ -31,26 +56,6 @@ MATERIALS_CATALOG = {
         {"name": "Water", "unit": "Case", "unit_price": 12.19},
         {"name": "White tape (4x108) roll", "unit": "Roll", "unit_price": 12.50},
         {"name": "Wire Cup Brushes-Home Depot", "unit": "Each", "unit_price": 23.47},
-    ],
-    
-    "MATERIALS": [
-        {"name": "Epoxy mastic 2 gal kit", "unit": "Kit", "unit_price": 145.48},
-        {"name": "Mek - 5 Gal", "unit": "Gallon", "unit_price": 19.85},
-        {"name": "Reducer #58 5 gal", "unit": "Gallon", "unit_price": 27.32},
-    ],
-    
-    "PPE": [
-        {"name": "Concentra- Blood lead", "unit": "Test", "unit_price": 136.00},
-        {"name": "Coveralls/ Tyvek", "unit": "Each", "unit_price": 4.98},
-        {"name": "Dbl eye face shield", "unit": "Each", "unit_price": 8.35},
-        {"name": "Ear Plugs", "unit": "Pair", "unit_price": 0.18},
-        {"name": "Gloves Blue & Yellow", "unit": "Pair", "unit_price": 6.15},
-        {"name": "Gloves Gray & White", "unit": "Pair", "unit_price": 3.10},
-        {"name": "Gloves Latex/ Nitrile", "unit": "Box", "unit_price": 14.20},
-        {"name": "Head Socks", "unit": "Each", "unit_price": 0.81},
-        {"name": "P100 filters", "unit": "Each", "unit_price": 8.87},
-        {"name": "Safety Glasses/ Clear", "unit": "Pair", "unit_price": 1.42},
-        {"name": "Safety Glasses/ Tinted", "unit": "Pair", "unit_price": 1.42},
     ],
     
     "FUEL": [
