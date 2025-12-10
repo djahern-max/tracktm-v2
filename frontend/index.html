@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TrackTM - Daily Timesheet Entry</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1>TSI Daily Timesheet Entry</h1>
+            <div class="header-info">
+                <div class="info-group">
+                    <label>Job Number:</label>
+                    <input type="text" id="jobNumber" value="2317" />
+                </div>
+                <div class="info-group">
+                    <label>Date:</label>
+                    <input type="date" id="entryDate" />
+                </div>
+                <button id="loadBtn" class="btn btn-secondary">Load Entry</button>
+                <button id="newBtn" class="btn btn-secondary">New Entry</button>
+            </div>
+        </header>
+
+        <!-- Form Container -->
+        <div class="form-container" id="formContainer">
+            <p class="instruction">Select a date and click "Load Entry" or "New Entry" to begin</p>
+        </div>
+
+        <!-- Actions -->
+        <div class="actions-bar" id="actionsBar" style="display: none;">
+            <button id="saveBtn" class="btn btn-primary">💾 Save Entry</button>
+            <button id="exportBtn" class="btn btn-success">📊 Export Job Summary</button>
+            <div class="total-display">
+                <span>Daily Total:</span>
+                <strong id="dailyTotal">$0.00</strong>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

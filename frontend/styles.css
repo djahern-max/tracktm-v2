@@ -1,0 +1,270 @@
+/* TrackTM - Clean Enterprise Styling */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    background: #f5f5f5;
+    padding: 20px;
+    color: #1f2937;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+/* Header */
+.header {
+    background: white;
+    padding: 20px 30px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+.header h1 {
+    font-size: 1.5rem;
+    margin-bottom: 15px;
+    color: #111827;
+}
+
+.header-info {
+    display: flex;
+    gap: 15px;
+    align-items: flex-end;
+}
+
+.info-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.info-group label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-bottom: 5px;
+    color: #374151;
+}
+
+.info-group input {
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 1rem;
+}
+
+/* Buttons */
+.btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: #1a56db;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #1e429f;
+}
+
+.btn-secondary {
+    background: #e5e7eb;
+    color: #374151;
+}
+
+.btn-secondary:hover {
+    background: #d1d5db;
+}
+
+.btn-success {
+    background: #047857;
+    color: white;
+}
+
+.btn-success:hover {
+    background: #065f46;
+}
+
+/* Form Container */
+.form-container {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    padding: 30px;
+    min-height: 400px;
+}
+
+.instruction {
+    text-align: center;
+    color: #6b7280;
+    padding: 50px 20px;
+    font-size: 1.1rem;
+}
+
+/* Category Sections */
+.category-section {
+    margin-bottom: 30px;
+}
+
+.category-header {
+    background: #f9fafb;
+    padding: 12px 15px;
+    border-left: 4px solid #1a56db;
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: #111827;
+    margin-bottom: 10px;
+}
+
+/* Material Items Table */
+.materials-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.materials-table thead th {
+    text-align: left;
+    padding: 10px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #6b7280;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.materials-table tbody tr {
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.materials-table tbody tr:hover {
+    background: #f9fafb;
+}
+
+.materials-table td {
+    padding: 10px;
+}
+
+.material-name {
+    font-weight: 500;
+    color: #111827;
+}
+
+.material-unit {
+    color: #6b7280;
+    font-size: 0.875rem;
+}
+
+/* Quantity Input */
+.qty-input {
+    width: 80px;
+    padding: 6px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 1rem;
+}
+
+.qty-input:focus {
+    outline: none;
+    border-color: #1a56db;
+    background: #eff6ff;
+}
+
+/* Price Input */
+.price-input {
+    width: 100px;
+    padding: 6px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    text-align: right;
+    font-size: 1rem;
+}
+
+.price-input:focus {
+    outline: none;
+    border-color: #1a56db;
+}
+
+/* Total Column */
+.item-total {
+    font-weight: 600;
+    text-align: right;
+    color: #111827;
+}
+
+/* Actions Bar */
+.actions-bar {
+    background: white;
+    padding: 20px 30px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    margin-top: 20px;
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+
+.total-display {
+    margin-left: auto;
+    padding: 10px 20px;
+    background: #f9fafb;
+    border-radius: 6px;
+}
+
+.total-display span {
+    color: #6b7280;
+    font-size: 0.875rem;
+    margin-right: 10px;
+}
+
+.total-display strong {
+    color: #111827;
+    font-size: 1.5rem;
+}
+
+/* Success Message */
+.success-message {
+    background: #d1fae5;
+    color: #065f46;
+    padding: 15px 20px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+    font-weight: 600;
+}
+
+/* Error Message */
+.error-message {
+    background: #fee2e2;
+    color: #991b1b;
+    padding: 15px 20px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+    font-weight: 600;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .header-info {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .actions-bar {
+        flex-direction: column;
+    }
+    
+    .total-display {
+        margin-left: 0;
+        width: 100%;
+        text-align: center;
+    }
+}
