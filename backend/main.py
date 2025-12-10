@@ -1,11 +1,12 @@
 """
 TrackTM API - Daily Timesheet Entry System
+FIXED: Date handling for SQLite
 """
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import date as date_type
+from datetime import date as date_type, datetime
 from sqlalchemy.orm import Session
 from decimal import Decimal
 
@@ -67,7 +68,7 @@ def startup_event():
 def root():
     return {
         "app": "TrackTM - Daily Timesheet Entry",
-        "version": "2.0.0",
+        "version": "2.0.1",
         "endpoints": {
             "materials": "/api/materials",
             "daily_entries": "/api/entries",
@@ -141,9 +142,15 @@ def get_all_entries(job_number: Optional[str] = None, db: Session = Depends(get_
 @app.get("/api/entries/{job_number}/{entry_date}")
 def get_entry_by_date(job_number: str, entry_date: str, db: Session = Depends(get_db)):
     """Get a specific daily entry by job number and date"""
+    # Convert string to date object for query
+    try:
+        date_obj = datetime.strptime(entry_date, '%Y-%m-%d').date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    
     entry = db.query(DailyEntry).filter(
         DailyEntry.job_number == job_number,
-        DailyEntry.entry_date == entry_date
+        DailyEntry.entry_date == date_obj
     ).first()
     
     if not entry:
@@ -155,10 +162,16 @@ def get_entry_by_date(job_number: str, entry_date: str, db: Session = Depends(ge
 def create_or_update_entry(entry_input: DailyEntryInput, db: Session = Depends(get_db)):
     """Create or update a daily entry"""
     
+    # Convert string date to date object for SQLite
+    try:
+        entry_date = datetime.strptime(entry_input.entry_date, '%Y-%m-%d').date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    
     # Check if entry already exists
     existing_entry = db.query(DailyEntry).filter(
         DailyEntry.job_number == entry_input.job_number,
-        DailyEntry.entry_date == entry_input.entry_date
+        DailyEntry.entry_date == entry_date
     ).first()
     
     if existing_entry:
@@ -173,7 +186,7 @@ def create_or_update_entry(entry_input: DailyEntryInput, db: Session = Depends(g
         # Create new entry
         daily_entry = DailyEntry(
             job_number=entry_input.job_number,
-            entry_date=entry_input.entry_date
+            entry_date=entry_date  # Now using date object instead of string
         )
         db.add(daily_entry)
         db.flush()  # Get the ID
