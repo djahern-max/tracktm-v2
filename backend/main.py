@@ -1,15 +1,20 @@
 """
 TrackTM API - Daily Timesheet Entry System
-Updated with Labor Tracking Support
+Updated with Labor Tracking Support + Invoice Generation
 """
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import date as date_type, datetime
 from sqlalchemy.orm import Session
 from decimal import Decimal
+import os
+from fastapi.responses import StreamingResponse
+from typing import Optional
+from invoice_generator import generate_invoice_pdf
 
 from database import (
     get_session,
@@ -20,6 +25,8 @@ from database import (
     LaborEntry,
     init_db,
 )
+
+from invoice_generator import generate_invoice_from_entries
 
 app = FastAPI(title="TrackTM API - Daily Timesheet Entry")
 
@@ -69,7 +76,7 @@ class DailyEntryInput(BaseModel):
     job_number: str
     entry_date: str  # YYYY-MM-DD
     line_items: List[LineItemInput]
-    labor_items: Optional[List[LaborItemInput]] = []  # Add this!
+    labor_items: Optional[List[LaborItemInput]] = []
 
 
 class DailyEntryResponse(BaseModel):
@@ -79,6 +86,25 @@ class DailyEntryResponse(BaseModel):
     line_items: List[dict]
     labor_entries: List[dict]
     total_amount: float
+
+
+class InvoiceRequest(BaseModel):
+    job_number: str
+    job_name: str
+    purchase_order: Optional[str] = None
+    payment_terms_days: int = 30
+    remit_to_email: Optional[str] = None
+    ship_to_location: str
+    company_name: str
+    company_address_line1: str
+    company_address_line2: str
+    company_phone: str
+    company_fax: Optional[str] = None
+    bill_to_name: str
+    bill_to_address_line1: str
+    bill_to_address_line2: str
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
 
 
 # Dependency
@@ -104,12 +130,13 @@ def startup_event():
 def root():
     return {
         "app": "TrackTM - Daily Timesheet Entry",
-        "version": "2.1.0",
+        "version": "2.2.0",
         "endpoints": {
             "materials": "/api/materials",
             "labor_roles": "/api/labor-roles",
             "daily_entries": "/api/entries",
             "entry_by_date": "/api/entries/{job_number}/{date}",
+            "generate_invoice": "/api/invoice/generate",
         },
     }
 
@@ -362,7 +389,87 @@ def get_job_summary(job_number: str, db: Session = Depends(get_db)):
     }
 
 
-if __name__ == "__main__":
-    import uvicorn
+@app.post("/api/invoice/generate")
+def generate_invoice(request: InvoiceRequest, db: Session = Depends(get_db)):
+    """Generate invoice PDF for a job"""
 
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    try:
+        # Get all entries for the job
+        query = db.query(DailyEntry).filter(DailyEntry.job_number == request.job_number)
+
+        # Apply date range filters if provided
+        if request.start_date:
+            query = query.filter(DailyEntry.entry_date >= request.start_date)
+        if request.end_date:
+            query = query.filter(DailyEntry.entry_date <= request.end_date)
+
+        entries = query.all()
+
+        if not entries:
+            raise HTTPException(status_code=404, detail="No entries found for this job")
+
+        # Calculate totals
+        labor_total = 0.0
+        materials_total = 0.0
+
+        period_start = None
+        period_end = None
+
+        for entry in entries:
+            # Track date range
+            if period_start is None or entry.entry_date < period_start:
+                period_start = entry.entry_date
+            if period_end is None or entry.entry_date > period_end:
+                period_end = entry.entry_date
+
+            # Sum materials
+            for item in entry.line_items:
+                materials_total += item.total_amount
+
+            # Sum labor
+            for labor in entry.labor_entries:
+                labor_total += labor.total_amount
+
+        # Prepare invoice data
+        invoice_data = {
+            "job_number": request.job_number,
+            "job_name": request.job_name,
+            "purchase_order": request.purchase_order,
+            "payment_terms_days": request.payment_terms_days,
+            "remit_to_email": request.remit_to_email,
+            "ship_to_location": request.ship_to_location,
+            "company_name": request.company_name,
+            "company_address_line1": request.company_address_line1,
+            "company_address_line2": request.company_address_line2,
+            "company_phone": request.company_phone,
+            "company_fax": request.company_fax,
+            "bill_to_name": request.bill_to_name,
+            "bill_to_address_line1": request.bill_to_address_line1,
+            "bill_to_address_line2": request.bill_to_address_line2,
+            "period_start": str(period_start) if period_start else None,
+            "period_end": str(period_end) if period_end else None,
+        }
+
+        # Generate PDF (returns BytesIO buffer)
+        pdf_buffer = generate_invoice_pdf(invoice_data, labor_total, materials_total)
+
+        # Generate filename
+        from datetime import datetime
+
+        date_suffix = datetime.now().strftime("%m%d%y")
+        filename = f"Invoice_{request.job_number}-{date_suffix}.pdf"
+
+        # Return PDF as streaming response
+        return StreamingResponse(
+            pdf_buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error generating invoice: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to generate invoice: {str(e)}"
+        )

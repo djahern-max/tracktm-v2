@@ -767,6 +767,49 @@ async function exportDetailed() {
     }
 }
 
+// NEW: Export just the currently loaded day
+async function exportCurrentDay() {
+    const jobNumber = document.getElementById('jobNumber').value;
+    const entryDate = document.getElementById('entryDate').value;
+    const companyName = document.getElementById('companyName').value || 'Company Name';
+    const jobName = document.getElementById('jobName').value || '';
+
+    if (!jobNumber || !entryDate) {
+        alert('Please load an entry first');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/entries?job_number=${jobNumber}`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const entriesData = await response.json();
+
+        if (entriesData.entries && entriesData.entries.length > 0) {
+            // Filter to ONLY the currently loaded date
+            const filteredEntries = entriesData.entries.filter(e => e.entry_date === entryDate);
+
+            if (filteredEntries.length === 0) {
+                alert('No entry found for this date');
+                return;
+            }
+
+            const summary = calculateSummary(filteredEntries, jobNumber);
+            const csv = generateDetailedCSV(summary, filteredEntries, companyName, jobName);
+            const filename = `Job_${jobNumber}_${entryDate}.csv`;
+
+            downloadCSV(csv, filename);
+            showMessage(`Exported ${entryDate}`, 'success');
+        } else {
+            alert('No entries found for this job');
+        }
+    } catch (error) {
+        console.error('Error exporting:', error);
+        alert('Failed to export: ' + error.message);
+    }
+}
+
 // Calculate summary from entries
 function calculateSummary(entries, jobNumber) {
     let grandTotal = 0;
