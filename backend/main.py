@@ -15,6 +15,7 @@ import os
 from fastapi.responses import StreamingResponse
 from typing import Optional
 from invoice_generator import generate_invoice_pdf
+from contextlib import asynccontextmanager
 
 from database import (
     get_session,
@@ -26,9 +27,17 @@ from database import (
     init_db,
 )
 
-from invoice_generator import generate_invoice_from_entries
 
-app = FastAPI(title="TrackTM API - Daily Timesheet Entry")
+# Initialize database on startup
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    init_db()
+    print("✅ Database initialized")
+    yield
+
+
+app = FastAPI(title="TrackTM API - Daily Timesheet Entry", lifespan=lifespan)
 
 # CORS
 app.add_middleware(
@@ -114,13 +123,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
-
-# Initialize database on startup
-@app.on_event("startup")
-def startup_event():
-    init_db()
-    print("✅ Database initialized")
 
 
 # Routes
