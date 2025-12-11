@@ -1,10 +1,11 @@
 // TrackTM - Daily Timesheet Entry Application
-// CORRECTED VERSION with Labor Support
+// UPDATED: Multiple Employees Per Labor Role Support + CSV Export with Labor
 const API_BASE = 'http://localhost:8000/api';
 
 let materials = [];
 let laborRoles = [];
 let currentEntry = null;
+let laborRowCounter = 0; // For unique row IDs
 
 // Initialize
 document.addEventListener('DOMContentLoaded', init);
@@ -137,6 +138,7 @@ function loadJobInfo(jobNumber) {
 function displayForm(existingLineItems = [], existingLaborItems = []) {
     const container = document.getElementById('formContainer');
     container.innerHTML = '';
+    laborRowCounter = 0;
 
     // Group materials by category
     const byCategory = {};
@@ -153,7 +155,7 @@ function displayForm(existingLineItems = [], existingLaborItems = []) {
         container.appendChild(section);
     });
 
-    // Add labor section
+    // Add labor section with multiple employee support
     const laborSection = createLaborSection(existingLaborItems);
     container.appendChild(laborSection);
 
@@ -162,9 +164,6 @@ function displayForm(existingLineItems = [], existingLaborItems = []) {
 
     // Setup quantity input listeners
     setupQuantityListeners();
-
-    // Setup labor listeners
-    setupLaborListeners();
 
     // Calculate initial totals
     calculateTotal();
@@ -179,119 +178,183 @@ function createLaborSection(existingLaborItems = []) {
     header.textContent = 'LABOR';
     section.appendChild(header);
 
-    const table = document.createElement('table');
-    table.className = 'materials-table';
-
-    table.innerHTML = `
-        <thead>
-            <tr>
-                <th style="width: 20%">Role</th>
-                <th style="width: 20%">Employee</th>
-                <th style="width: 12%">Reg Hrs</th>
-                <th style="width: 12%">OT Hrs</th>
-                <th style="width: 8%">Night</th>
-                <th style="width: 13%">Reg Rate</th>
-                <th style="width: 15%; text-align: right;">Total</th>
-            </tr>
-        </thead>
-        <tbody></tbody>
-    `;
-
-    const tbody = table.querySelector('tbody');
-
-    laborRoles.forEach(role => {
-        const existingLabor = existingLaborItems.find(li => li.labor_role_id === role.id);
-        const regHours = existingLabor ? existingLabor.regular_hours : 0;
-        const otHours = existingLabor ? existingLabor.overtime_hours : 0;
-        const employeeName = existingLabor ? existingLabor.employee_name : loadEmployeeName(role.id);
-        const nightShift = existingLabor ? existingLabor.night_shift : false;
-
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td class="material-name">${role.name}</td>
-            <td>
-                <input 
-                    type="text" 
-                    class="employee-input" 
-                    data-labor-id="${role.id}"
-                    value="${employeeName || ''}"
-                    placeholder="Name"
-                    style="width: 100%; padding: 6px;"
-                />
-            </td>
-            <td>
-                <input 
-                    type="number" 
-                    class="labor-reg-input" 
-                    data-labor-id="${role.id}"
-                    value="${regHours > 0 ? regHours : ''}"
-                    min="0"
-                    step="0.5"
-                    placeholder="0"
-                />
-            </td>
-            <td>
-                <input 
-                    type="number" 
-                    class="labor-ot-input" 
-                    data-labor-id="${role.id}"
-                    value="${otHours > 0 ? otHours : ''}"
-                    min="0"
-                    step="0.5"
-                    placeholder="0"
-                />
-            </td>
-            <td class="text-center">
-                <input 
-                    type="checkbox" 
-                    class="night-shift-checkbox" 
-                    data-labor-id="${role.id}"
-                    ${nightShift ? 'checked' : ''}
-                />
-            </td>
-            <td class="text-right">$${role.straight_rate.toFixed(2)}</td>
-            <td class="labor-total text-right" data-labor-id="${role.id}">
-                $0.00
-            </td>
-        `;
-        tbody.appendChild(row);
+    // Group existing labor items by role
+    const laborByRole = {};
+    existingLaborItems.forEach(item => {
+        if (!laborByRole[item.labor_role_id]) {
+            laborByRole[item.labor_role_id] = [];
+        }
+        laborByRole[item.labor_role_id].push(item);
     });
 
-    section.appendChild(table);
+    // Create a subsection for each role
+    laborRoles.forEach(role => {
+        const roleSection = createLaborRoleSection(role, laborByRole[role.id] || []);
+        section.appendChild(roleSection);
+    });
+
     return section;
 }
 
-function setupLaborListeners() {
-    document.querySelectorAll('.labor-reg-input, .labor-ot-input, .night-shift-checkbox').forEach(input => {
-        input.addEventListener('input', (e) => {
-            const laborId = e.target.dataset.laborId;
-            updateLaborTotal(laborId);
+function createLaborRoleSection(role, existingEmployees = []) {
+    const roleSection = document.createElement('div');
+    roleSection.className = 'labor-role-section';
+    roleSection.setAttribute('data-role-id', role.id);
+
+    // Role header with add button
+    const roleHeader = document.createElement('div');
+    roleHeader.className = 'labor-role-header';
+    roleHeader.innerHTML = `
+        <span class="role-name">${role.name} (${formatCurrency(role.straight_rate)}/hr Reg, ${formatCurrency(role.overtime_rate)}/hr OT)</span>
+        <button class="btn-add-employee" data-role-id="${role.id}">+ Add ${role.name}</button>
+    `;
+    roleSection.appendChild(roleHeader);
+
+    // Container for employee rows
+    const employeesContainer = document.createElement('div');
+    employeesContainer.className = 'employees-container';
+    employeesContainer.setAttribute('data-role-id', role.id);
+
+    // Add existing employees or show empty state
+    if (existingEmployees.length > 0) {
+        existingEmployees.forEach(emp => {
+            const row = createEmployeeRow(role, emp);
+            employeesContainer.appendChild(row);
+        });
+    } else {
+        employeesContainer.innerHTML = '<div class="empty-state">No employees added. Click "+ Add" to add an employee.</div>';
+    }
+
+    roleSection.appendChild(employeesContainer);
+
+    // Add employee button click handler
+    roleHeader.querySelector('.btn-add-employee').addEventListener('click', () => {
+        addEmployeeRow(role);
+    });
+
+    return roleSection;
+}
+
+function addEmployeeRow(role) {
+    const container = document.querySelector(`.employees-container[data-role-id="${role.id}"]`);
+
+    // Remove empty state if it exists
+    const emptyState = container.querySelector('.empty-state');
+    if (emptyState) {
+        emptyState.remove();
+    }
+
+    // Load last used employee name for this role
+    const lastEmployee = loadEmployeeName(role.id);
+
+    const row = createEmployeeRow(role, {
+        employee_name: lastEmployee,
+        regular_hours: 0,
+        overtime_hours: 0,
+        night_shift: false
+    });
+
+    container.appendChild(row);
+    calculateTotal();
+}
+
+function createEmployeeRow(role, employeeData = {}) {
+    laborRowCounter++;
+    const rowId = `labor-row-${laborRowCounter}`;
+
+    const row = document.createElement('div');
+    row.className = 'employee-row';
+    row.setAttribute('data-row-id', rowId);
+    row.setAttribute('data-role-id', role.id);
+
+    const employeeName = employeeData.employee_name || '';
+    const regHours = employeeData.regular_hours || 0;
+    const otHours = employeeData.overtime_hours || 0;
+    const nightShift = employeeData.night_shift || false;
+
+    row.innerHTML = `
+        <input 
+            type="text" 
+            class="employee-input" 
+            data-row-id="${rowId}"
+            value="${employeeName}"
+            placeholder="Employee Name"
+        />
+        <input 
+            type="number" 
+            class="labor-reg-input" 
+            data-row-id="${rowId}"
+            value="${regHours > 0 ? regHours : ''}"
+            min="0"
+            step="0.5"
+            placeholder="Reg Hrs"
+        />
+        <input 
+            type="number" 
+            class="labor-ot-input" 
+            data-row-id="${rowId}"
+            value="${otHours > 0 ? otHours : ''}"
+            min="0"
+            step="0.5"
+            placeholder="OT Hrs"
+        />
+        <label class="night-shift-label">
+            <input 
+                type="checkbox" 
+                class="night-shift-checkbox" 
+                data-row-id="${rowId}"
+                ${nightShift ? 'checked' : ''}
+            />
+            <span>Night</span>
+        </label>
+        <div class="labor-total" data-row-id="${rowId}">$0.00</div>
+        <button class="btn-remove-employee" data-row-id="${rowId}">×</button>
+    `;
+
+    // Setup event listeners
+    const regInput = row.querySelector('.labor-reg-input');
+    const otInput = row.querySelector('.labor-ot-input');
+    const nightCheckbox = row.querySelector('.night-shift-checkbox');
+    const employeeInput = row.querySelector('.employee-input');
+
+    [regInput, otInput, nightCheckbox].forEach(input => {
+        input.addEventListener('input', () => {
+            updateEmployeeTotal(rowId, role);
             calculateTotal();
         });
     });
 
-    // Also update totals for existing values
-    laborRoles.forEach(role => {
-        updateLaborTotal(role.id);
+    // Save employee name when it changes
+    employeeInput.addEventListener('blur', () => {
+        if (employeeInput.value) {
+            saveEmployeeName(role.id, employeeInput.value);
+        }
     });
+
+    // Remove button
+    row.querySelector('.btn-remove-employee').addEventListener('click', () => {
+        row.remove();
+
+        // If no more employees, show empty state
+        const container = document.querySelector(`.employees-container[data-role-id="${role.id}"]`);
+        if (container.children.length === 0) {
+            container.innerHTML = '<div class="empty-state">No employees added. Click "+ Add" to add an employee.</div>';
+        }
+
+        calculateTotal();
+    });
+
+    // Calculate initial total
+    setTimeout(() => updateEmployeeTotal(rowId, role), 0);
+
+    return row;
 }
 
-function saveEmployeeName(laborRoleId, employeeName) {
-    localStorage.setItem(`tracktm_labor_${laborRoleId}`, employeeName);
-}
-
-function loadEmployeeName(laborRoleId) {
-    return localStorage.getItem(`tracktm_labor_${laborRoleId}`) || '';
-}
-
-function updateLaborTotal(laborId) {
-    const role = laborRoles.find(r => r.id == laborId);
-    if (!role) return;
-
-    const regInput = document.querySelector(`.labor-reg-input[data-labor-id="${laborId}"]`);
-    const otInput = document.querySelector(`.labor-ot-input[data-labor-id="${laborId}"]`);
-    const nightCheckbox = document.querySelector(`.night-shift-checkbox[data-labor-id="${laborId}"]`);
-    const totalCell = document.querySelector(`.labor-total[data-labor-id="${laborId}"]`);
+function updateEmployeeTotal(rowId, role) {
+    const regInput = document.querySelector(`.labor-reg-input[data-row-id="${rowId}"]`);
+    const otInput = document.querySelector(`.labor-ot-input[data-row-id="${rowId}"]`);
+    const nightCheckbox = document.querySelector(`.night-shift-checkbox[data-row-id="${rowId}"]`);
+    const totalCell = document.querySelector(`.labor-total[data-row-id="${rowId}"]`);
 
     if (!regInput || !otInput || !nightCheckbox || !totalCell) return;
 
@@ -308,7 +371,15 @@ function updateLaborTotal(laborId) {
     }
 
     const total = (regHours * regRate) + (otHours * otRate);
-    totalCell.textContent = `$${total.toFixed(2)}`;
+    totalCell.textContent = formatCurrency(total);
+}
+
+function saveEmployeeName(laborRoleId, employeeName) {
+    localStorage.setItem(`tracktm_labor_${laborRoleId}`, employeeName);
+}
+
+function loadEmployeeName(laborRoleId) {
+    return localStorage.getItem(`tracktm_labor_${laborRoleId}`) || '';
 }
 
 // Create a category section
@@ -403,7 +474,7 @@ function updateLineTotal(materialId) {
     const price = parseFloat(priceInput.value) || 0;
     const total = qty * price;
 
-    totalCell.textContent = `$${total.toFixed(2)}`;
+    totalCell.textContent = formatCurrency(total);
 }
 
 // Calculate and display grand total (materials + labor)
@@ -419,13 +490,13 @@ function calculateTotal() {
         grandTotal += (qty * price);
     });
 
-    // Labor
+    // Labor - sum all employee totals
     document.querySelectorAll('.labor-total').forEach(cell => {
-        const total = parseFloat(cell.textContent.replace('$', '')) || 0;
+        const total = parseFloat(cell.textContent.replace('$', '').replace(',', '')) || 0;
         grandTotal += total;
     });
 
-    document.getElementById('dailyTotal').textContent = `$${grandTotal.toFixed(2)}`;
+    document.getElementById('dailyTotal').textContent = formatCurrency(grandTotal);
 }
 
 // Save entry
@@ -460,26 +531,25 @@ async function saveEntry() {
         }
     });
 
-    // Collect labor items (only non-zero hours)
+    // Collect labor items - ALL employee rows
     const laborItems = [];
-    document.querySelectorAll('.labor-reg-input').forEach(input => {
-        const laborId = parseInt(input.dataset.laborId);
-        const regHours = parseFloat(input.value) || 0;
-        const otInput = document.querySelector(`.labor-ot-input[data-labor-id="${laborId}"]`);
+    document.querySelectorAll('.employee-row').forEach(row => {
+        const rowId = row.getAttribute('data-row-id');
+        const roleId = parseInt(row.getAttribute('data-role-id'));
+
+        const employeeInput = row.querySelector('.employee-input');
+        const regInput = row.querySelector('.labor-reg-input');
+        const otInput = row.querySelector('.labor-ot-input');
+        const nightCheckbox = row.querySelector('.night-shift-checkbox');
+
+        const regHours = parseFloat(regInput.value) || 0;
         const otHours = parseFloat(otInput.value) || 0;
 
+        // Only save if there are hours
         if (regHours > 0 || otHours > 0) {
-            const employeeInput = document.querySelector(`.employee-input[data-labor-id="${laborId}"]`);
-            const nightCheckbox = document.querySelector(`.night-shift-checkbox[data-labor-id="${laborId}"]`);
-
-            // Save employee name for future use
-            if (employeeInput.value) {
-                saveEmployeeName(laborId, employeeInput.value);
-            }
-
             laborItems.push({
-                labor_role_id: laborId,
-                employee_name: employeeInput.value,
+                labor_role_id: roleId,
+                employee_name: employeeInput.value || null,
                 regular_hours: regHours,
                 overtime_hours: otHours,
                 night_shift: nightCheckbox.checked
@@ -519,7 +589,7 @@ async function saveEntry() {
             const materialsTotal = data.entry.line_items.reduce((sum, item) => sum + item.total_amount, 0);
             const laborTotal = data.entry.labor_entries.reduce((sum, item) => sum + item.total_amount, 0);
             const grandTotal = materialsTotal + laborTotal;
-            showMessage(`Entry saved successfully! Total: $${grandTotal.toFixed(2)}`, 'success');
+            showMessage(`Entry saved successfully! Total: ${formatCurrency(grandTotal)}`, 'success');
             currentEntry = data.entry;
         } else {
             console.error('Save failed:', data);
@@ -570,7 +640,7 @@ async function exportJob() {
     }
 }
 
-// Enhanced detailed export
+// Enhanced detailed export WITH LABOR
 async function exportDetailed() {
     const jobNumber = document.getElementById('jobNumber').value;
     const companyName = document.getElementById('companyName').value || 'Company Name';
@@ -673,7 +743,7 @@ function generateEnhancedCSV(summary, companyName, jobName) {
     return lines.join('\n');
 }
 
-// Generate detailed breakdown CSV
+// Generate detailed breakdown CSV WITH LABOR
 function generateDetailedCSV(summary, entries, companyName, jobName) {
     const lines = [];
     const today = new Date();
@@ -710,6 +780,7 @@ function generateDetailedCSV(summary, entries, companyName, jobName) {
     lines.push(`Report Generated:,${reportDate}`);
     lines.push('');
 
+    // ========== MATERIALS SECTION ==========
     const itemTotals = {};
     entries.forEach(entry => {
         entry.line_items.forEach(item => {
@@ -738,9 +809,12 @@ function generateDetailedCSV(summary, entries, companyName, jobName) {
     });
 
     const categoryOrder = ['EQUIPMENT', 'MATERIALS', 'PPE', 'CONSUMABLES', 'FUEL'];
-    lines.push('DETAILED BREAKDOWN BY CATEGORY');
+
+    lines.push('MATERIALS BREAKDOWN');
     lines.push('=============================================================');
     lines.push('');
+
+    let materialsGrandTotal = 0;
 
     categoryOrder.forEach(category => {
         if (byCategory[category]) {
@@ -752,13 +826,98 @@ function generateDetailedCSV(summary, entries, companyName, jobName) {
                 lines.push(`"${item.name}",${item.unit},${qty},${formatCurrency(item.unit_price)},${formatCurrency(item.total_amount)}`);
             });
             const categoryTotal = byCategory[category].reduce((sum, item) => sum + item.total_amount, 0);
-            lines.push(`${category} SUBTOTAL:,,,${formatCurrency(categoryTotal)}`);
+            materialsGrandTotal += categoryTotal;
+            lines.push(`${category} SUBTOTAL:,,,,${formatCurrency(categoryTotal)}`);
             lines.push('');
         }
     });
 
-    lines.push('=============================================================');
-    lines.push(`GRAND TOTAL:,,,${formatCurrency(summary.grand_total)}`);
+    lines.push('MATERIALS TOTAL:,,,,${formatCurrency(materialsGrandTotal)}');
+    lines.push('');
+    lines.push('');
+
+    // ========== LABOR SECTION ==========
+    const laborTotals = {};
+
+    entries.forEach(entry => {
+        if (entry.labor_entries) {
+            entry.labor_entries.forEach(labor => {
+                const key = `${labor.role_name}`;
+                if (!laborTotals[key]) {
+                    laborTotals[key] = {
+                        role_name: labor.role_name,
+                        regular_hours: 0,
+                        overtime_hours: 0,
+                        total_amount: 0,
+                        employees: []
+                    };
+                }
+                laborTotals[key].regular_hours += labor.regular_hours;
+                laborTotals[key].overtime_hours += labor.overtime_hours;
+                laborTotals[key].total_amount += labor.total_amount;
+
+                // Track individual employees
+                if (labor.employee_name) {
+                    laborTotals[key].employees.push({
+                        name: labor.employee_name,
+                        regular_hours: labor.regular_hours,
+                        overtime_hours: labor.overtime_hours,
+                        night_shift: labor.night_shift,
+                        total: labor.total_amount
+                    });
+                }
+            });
+        }
+    });
+
+    if (Object.keys(laborTotals).length > 0) {
+        lines.push('LABOR BREAKDOWN');
+        lines.push('=============================================================');
+        lines.push('');
+
+        let laborGrandTotal = 0;
+
+        Object.values(laborTotals).forEach(labor => {
+            lines.push(labor.role_name);
+            lines.push('-------------------------------------------------------------');
+
+            if (labor.employees.length > 0) {
+                lines.push('Employee,Reg Hours,OT Hours,Night Shift,Total');
+                labor.employees.forEach(emp => {
+                    const regHrs = emp.regular_hours % 1 === 0 ? emp.regular_hours.toFixed(0) : emp.regular_hours.toFixed(2);
+                    const otHrs = emp.overtime_hours % 1 === 0 ? emp.overtime_hours.toFixed(0) : emp.overtime_hours.toFixed(2);
+                    const nightShiftText = emp.night_shift ? 'Yes' : 'No';
+                    lines.push(`"${emp.name}",${regHrs},${otHrs},${nightShiftText},${formatCurrency(emp.total)}`);
+                });
+            } else {
+                lines.push('Description,Reg Hours,OT Hours,Total');
+                const regHrs = labor.regular_hours % 1 === 0 ? labor.regular_hours.toFixed(0) : labor.regular_hours.toFixed(2);
+                const otHrs = labor.overtime_hours % 1 === 0 ? labor.overtime_hours.toFixed(0) : labor.overtime_hours.toFixed(2);
+                lines.push(`${labor.role_name},${regHrs},${otHrs},${formatCurrency(labor.total_amount)}`);
+            }
+
+            laborGrandTotal += labor.total_amount;
+            lines.push(`${labor.role_name} SUBTOTAL:,,,,${formatCurrency(labor.total_amount)}`);
+            lines.push('');
+        });
+
+        lines.push('LABOR TOTAL:,,,,${formatCurrency(laborGrandTotal)}');
+        lines.push('');
+        lines.push('');
+
+        // ========== GRAND TOTAL ==========
+        lines.push('=============================================================');
+        lines.push('PROJECT TOTALS');
+        lines.push('=============================================================');
+        lines.push(`Materials Total:,,,,${formatCurrency(materialsGrandTotal)}`);
+        lines.push(`Labor Total:,,,,${formatCurrency(laborGrandTotal)}`);
+        lines.push('-------------------------------------------------------------');
+        lines.push(`GRAND TOTAL:,,,,${formatCurrency(summary.grand_total)}`);
+    } else {
+        lines.push('=============================================================');
+        lines.push(`GRAND TOTAL:,,,,${formatCurrency(summary.grand_total)}`);
+    }
+
     return lines.join('\n');
 }
 

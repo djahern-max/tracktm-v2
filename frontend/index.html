@@ -40,6 +40,69 @@
             <p class="instruction">Select a date and click "Load Entry" or "New Entry" to begin</p>
         </div>
 
+        <!-- Labor Section -->
+        <div class="form-container" id="laborContainer" style="display: none; margin-top: 20px;">
+            <div style="border-left: 4px solid #1a56db; padding-left: 15px; margin-bottom: 20px;">
+                <h2 style="font-size: 1.1rem; font-weight: 700; color: #111827;">LABOR</h2>
+            </div>
+
+            <table class="materials-table">
+                <thead>
+                    <tr>
+                        <th style="width: 15%">Role</th>
+                        <th style="width: 20%">Employee</th>
+                        <th style="width: 12%">Reg Hrs</th>
+                        <th style="width: 12%">OT Hrs</th>
+                        <th style="width: 8%" class="labor-checkbox-cell">Night</th>
+                        <th style="width: 13%">Reg Rate</th>
+                        <th style="width: 20%; text-align: right;">Total</th>
+                    </tr>
+                </thead>
+                <tbody id="laborTableBody">
+                    <tr>
+                        <td class="material-name">Painter</td>
+                        <td><input type="text" class="labor-input" placeholder="Name" style="text-align: left;" /></td>
+                        <td><input type="number" class="labor-input" min="0" step="0.5" placeholder="0" /></td>
+                        <td><input type="number" class="labor-input" min="0" step="0.5" placeholder="0" /></td>
+                        <td class="labor-checkbox-cell"><input type="checkbox" /></td>
+                        <td><input type="number" class="labor-input" value="139.41" step="0.01"
+                                style="text-align: right;" /></td>
+                        <td class="item-total">$0.00</td>
+                    </tr>
+                    <tr>
+                        <td class="material-name">Per Diem</td>
+                        <td><input type="text" class="labor-input" placeholder="Name" style="text-align: left;" /></td>
+                        <td><input type="number" class="labor-input" min="0" step="0.5" placeholder="0" /></td>
+                        <td><input type="number" class="labor-input" min="0" step="0.5" placeholder="0" /></td>
+                        <td class="labor-checkbox-cell"><input type="checkbox" /></td>
+                        <td><input type="number" class="labor-input" value="75.00" step="0.01"
+                                style="text-align: right;" /></td>
+                        <td class="item-total">$0.00</td>
+                    </tr>
+                    <tr>
+                        <td class="material-name">Project Manager</td>
+                        <td><input type="text" class="labor-input" placeholder="Name" style="text-align: left;" /></td>
+                        <td><input type="number" class="labor-input" min="0" step="0.5" placeholder="0" /></td>
+                        <td><input type="number" class="labor-input" min="0" step="0.5" placeholder="0" /></td>
+                        <td class="labor-checkbox-cell"><input type="checkbox" /></td>
+                        <td><input type="number" class="labor-input" value="155.00" step="0.01"
+                                style="text-align: right;" /></td>
+                        <td class="item-total">$0.00</td>
+                    </tr>
+                    <tr>
+                        <td class="material-name">Supervisor</td>
+                        <td><input type="text" class="labor-input" placeholder="Name" style="text-align: left;" /></td>
+                        <td><input type="number" class="labor-input" min="0" step="0.5" placeholder="0" /></td>
+                        <td><input type="number" class="labor-input" min="0" step="0.5" placeholder="0" /></td>
+                        <td class="labor-checkbox-cell"><input type="checkbox" /></td>
+                        <td><input type="number" class="labor-input" value="141.41" step="0.01"
+                                style="text-align: right;" /></td>
+                        <td class="item-total">$0.00</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
         <!-- Actions -->
         <div class="actions-bar" id="actionsBar" style="display: none;">
             <button id="saveBtn" class="btn btn-primary">💾 Save Entry</button>
