@@ -1,7 +1,9 @@
 // TrackTM - Daily Timesheet Entry Application
+// CORRECTED VERSION with Labor Support
 const API_BASE = 'http://localhost:8000/api';
 
 let materials = [];
+let laborRoles = [];
 let currentEntry = null;
 
 // Initialize
@@ -11,8 +13,9 @@ async function init() {
     // Set today's date as default
     document.getElementById('entryDate').valueAsDate = new Date();
 
-    // Load materials catalog
+    // Load materials catalog and labor roles
     await loadMaterials();
+    await loadLaborRoles();
 
     // Setup event listeners
     document.getElementById('loadBtn').addEventListener('click', loadEntry);
@@ -20,6 +23,18 @@ async function init() {
     document.getElementById('saveBtn').addEventListener('click', saveEntry);
     document.getElementById('exportBtn').addEventListener('click', exportJob);
     document.getElementById('exportDetailedBtn').addEventListener('click', exportDetailed);
+}
+
+async function loadLaborRoles() {
+    try {
+        const response = await fetch(`${API_BASE}/labor-roles`);
+        const data = await response.json();
+        laborRoles = data;
+        console.log(`Loaded ${laborRoles.length} labor roles`);
+    } catch (error) {
+        console.error('Error loading labor roles:', error);
+        alert('Failed to load labor roles. Make sure the backend is running.');
+    }
 }
 
 // Load materials catalog from API
@@ -60,7 +75,7 @@ async function loadEntry() {
 
         if (data.entry) {
             currentEntry = data.entry;
-            displayForm(currentEntry.line_items);
+            displayForm(currentEntry.line_items, currentEntry.labor_entries || []);
             showMessage(`Loaded entry for ${entryDate}`, 'success');
         } else {
             showMessage(`No entry found for ${entryDate}. Starting new entry.`, 'info');
@@ -82,7 +97,7 @@ function newEntry() {
     }
 
     currentEntry = null;
-    displayForm([]);
+    displayForm([], []);
     document.getElementById('actionsBar').style.display = 'flex';
 }
 
@@ -119,7 +134,7 @@ function loadJobInfo(jobNumber) {
 }
 
 // Display the form with materials grouped by category
-function displayForm(existingLineItems = []) {
+function displayForm(existingLineItems = [], existingLaborItems = []) {
     const container = document.getElementById('formContainer');
     container.innerHTML = '';
 
@@ -138,14 +153,162 @@ function displayForm(existingLineItems = []) {
         container.appendChild(section);
     });
 
+    // Add labor section
+    const laborSection = createLaborSection(existingLaborItems);
+    container.appendChild(laborSection);
+
     // Show actions bar
     document.getElementById('actionsBar').style.display = 'flex';
 
     // Setup quantity input listeners
     setupQuantityListeners();
 
+    // Setup labor listeners
+    setupLaborListeners();
+
     // Calculate initial totals
     calculateTotal();
+}
+
+function createLaborSection(existingLaborItems = []) {
+    const section = document.createElement('div');
+    section.className = 'category-section';
+
+    const header = document.createElement('div');
+    header.className = 'category-header';
+    header.textContent = 'LABOR';
+    section.appendChild(header);
+
+    const table = document.createElement('table');
+    table.className = 'materials-table';
+
+    table.innerHTML = `
+        <thead>
+            <tr>
+                <th style="width: 20%">Role</th>
+                <th style="width: 20%">Employee</th>
+                <th style="width: 12%">Reg Hrs</th>
+                <th style="width: 12%">OT Hrs</th>
+                <th style="width: 8%">Night</th>
+                <th style="width: 13%">Reg Rate</th>
+                <th style="width: 15%; text-align: right;">Total</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    `;
+
+    const tbody = table.querySelector('tbody');
+
+    laborRoles.forEach(role => {
+        const existingLabor = existingLaborItems.find(li => li.labor_role_id === role.id);
+        const regHours = existingLabor ? existingLabor.regular_hours : 0;
+        const otHours = existingLabor ? existingLabor.overtime_hours : 0;
+        const employeeName = existingLabor ? existingLabor.employee_name : loadEmployeeName(role.id);
+        const nightShift = existingLabor ? existingLabor.night_shift : false;
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td class="material-name">${role.name}</td>
+            <td>
+                <input 
+                    type="text" 
+                    class="employee-input" 
+                    data-labor-id="${role.id}"
+                    value="${employeeName || ''}"
+                    placeholder="Name"
+                    style="width: 100%; padding: 6px;"
+                />
+            </td>
+            <td>
+                <input 
+                    type="number" 
+                    class="labor-reg-input" 
+                    data-labor-id="${role.id}"
+                    value="${regHours > 0 ? regHours : ''}"
+                    min="0"
+                    step="0.5"
+                    placeholder="0"
+                />
+            </td>
+            <td>
+                <input 
+                    type="number" 
+                    class="labor-ot-input" 
+                    data-labor-id="${role.id}"
+                    value="${otHours > 0 ? otHours : ''}"
+                    min="0"
+                    step="0.5"
+                    placeholder="0"
+                />
+            </td>
+            <td class="text-center">
+                <input 
+                    type="checkbox" 
+                    class="night-shift-checkbox" 
+                    data-labor-id="${role.id}"
+                    ${nightShift ? 'checked' : ''}
+                />
+            </td>
+            <td class="text-right">$${role.straight_rate.toFixed(2)}</td>
+            <td class="labor-total text-right" data-labor-id="${role.id}">
+                $0.00
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+
+    section.appendChild(table);
+    return section;
+}
+
+function setupLaborListeners() {
+    document.querySelectorAll('.labor-reg-input, .labor-ot-input, .night-shift-checkbox').forEach(input => {
+        input.addEventListener('input', (e) => {
+            const laborId = e.target.dataset.laborId;
+            updateLaborTotal(laborId);
+            calculateTotal();
+        });
+    });
+
+    // Also update totals for existing values
+    laborRoles.forEach(role => {
+        updateLaborTotal(role.id);
+    });
+}
+
+function saveEmployeeName(laborRoleId, employeeName) {
+    localStorage.setItem(`tracktm_labor_${laborRoleId}`, employeeName);
+}
+
+function loadEmployeeName(laborRoleId) {
+    return localStorage.getItem(`tracktm_labor_${laborRoleId}`) || '';
+}
+
+function updateLaborTotal(laborId) {
+    const role = laborRoles.find(r => r.id == laborId);
+    if (!role) return;
+
+    const regInput = document.querySelector(`.labor-reg-input[data-labor-id="${laborId}"]`);
+    const otInput = document.querySelector(`.labor-ot-input[data-labor-id="${laborId}"]`);
+    const nightCheckbox = document.querySelector(`.night-shift-checkbox[data-labor-id="${laborId}"]`);
+    const totalCell = document.querySelector(`.labor-total[data-labor-id="${laborId}"]`);
+
+    if (!regInput || !otInput || !nightCheckbox || !totalCell) return;
+
+    const regHours = parseFloat(regInput.value) || 0;
+    const otHours = parseFloat(otInput.value) || 0;
+    const nightShift = nightCheckbox.checked;
+
+    let regRate = role.straight_rate;
+    let otRate = role.overtime_rate;
+
+    if (nightShift) {
+        regRate += 2.00;
+        otRate += 2.00;
+    }
+
+    const total = (regHours * regRate) + (otHours * otRate);
+    totalCell.textContent = `$${total.toFixed(2)}`;
 }
 
 // Create a category section
@@ -243,16 +406,23 @@ function updateLineTotal(materialId) {
     totalCell.textContent = `$${total.toFixed(2)}`;
 }
 
-// Calculate and display grand total
+// Calculate and display grand total (materials + labor)
 function calculateTotal() {
     let grandTotal = 0;
 
+    // Materials
     document.querySelectorAll('.qty-input').forEach(input => {
         const materialId = input.dataset.materialId;
         const qty = parseFloat(input.value) || 0;
         const priceInput = document.querySelector(`.price-input[data-material-id="${materialId}"]`);
         const price = parseFloat(priceInput.value) || 0;
         grandTotal += (qty * price);
+    });
+
+    // Labor
+    document.querySelectorAll('.labor-total').forEach(cell => {
+        const total = parseFloat(cell.textContent.replace('$', '')) || 0;
+        grandTotal += total;
     });
 
     document.getElementById('dailyTotal').textContent = `$${grandTotal.toFixed(2)}`;
@@ -290,12 +460,44 @@ async function saveEntry() {
         }
     });
 
-    if (lineItems.length === 0) {
-        alert('Please enter at least one quantity');
+    // Collect labor items (only non-zero hours)
+    const laborItems = [];
+    document.querySelectorAll('.labor-reg-input').forEach(input => {
+        const laborId = parseInt(input.dataset.laborId);
+        const regHours = parseFloat(input.value) || 0;
+        const otInput = document.querySelector(`.labor-ot-input[data-labor-id="${laborId}"]`);
+        const otHours = parseFloat(otInput.value) || 0;
+
+        if (regHours > 0 || otHours > 0) {
+            const employeeInput = document.querySelector(`.employee-input[data-labor-id="${laborId}"]`);
+            const nightCheckbox = document.querySelector(`.night-shift-checkbox[data-labor-id="${laborId}"]`);
+
+            // Save employee name for future use
+            if (employeeInput.value) {
+                saveEmployeeName(laborId, employeeInput.value);
+            }
+
+            laborItems.push({
+                labor_role_id: laborId,
+                employee_name: employeeInput.value,
+                regular_hours: regHours,
+                overtime_hours: otHours,
+                night_shift: nightCheckbox.checked
+            });
+        }
+    });
+
+    if (lineItems.length === 0 && laborItems.length === 0) {
+        alert('Please enter at least one material quantity or labor hours');
         return;
     }
 
-    console.log('Saving entry:', { job_number: jobNumber, entry_date: entryDate, line_items: lineItems });
+    console.log('Saving entry:', {
+        job_number: jobNumber,
+        entry_date: entryDate,
+        line_items: lineItems,
+        labor_items: laborItems
+    });
 
     // Save to API
     try {
@@ -305,7 +507,8 @@ async function saveEntry() {
             body: JSON.stringify({
                 job_number: jobNumber,
                 entry_date: entryDate,
-                line_items: lineItems
+                line_items: lineItems,
+                labor_items: laborItems
             })
         });
 
@@ -313,8 +516,10 @@ async function saveEntry() {
         console.log('Save response:', data);
 
         if (response.ok) {
-            const total = data.entry.line_items.reduce((sum, item) => sum + item.total_amount, 0);
-            showMessage(`Entry saved successfully! Total: $${total.toFixed(2)}`, 'success');
+            const materialsTotal = data.entry.line_items.reduce((sum, item) => sum + item.total_amount, 0);
+            const laborTotal = data.entry.labor_entries.reduce((sum, item) => sum + item.total_amount, 0);
+            const grandTotal = materialsTotal + laborTotal;
+            showMessage(`Entry saved successfully! Total: $${grandTotal.toFixed(2)}`, 'success');
             currentEntry = data.entry;
         } else {
             console.error('Save failed:', data);
@@ -328,7 +533,6 @@ async function saveEntry() {
 
 // Helper functions for formatting
 function formatCurrency(amount) {
-    // Format without commas for CSV compatibility
     return '$' + amount.toFixed(2);
 }
 
@@ -353,11 +557,8 @@ async function exportJob() {
         if (entriesData.entries && entriesData.entries.length > 0) {
             const summary = calculateSummary(entriesData.entries, jobNumber);
             const csv = generateEnhancedCSV(summary, companyName, jobName);
-
-            // Use report date range for filename instead of today's date
             const dates = entriesData.entries.map(e => e.entry_date).sort();
-            const lastDate = dates[dates.length - 1].replace(/-/g, '-'); // Keep as YYYY-MM-DD
-
+            const lastDate = dates[dates.length - 1].replace(/-/g, '-');
             downloadCSV(csv, `Job_${jobNumber}_Summary_${lastDate}.csv`);
             showMessage('Summary exported successfully!', 'success');
         } else {
@@ -369,7 +570,7 @@ async function exportJob() {
     }
 }
 
-// Enhanced detailed export with breakdown by category
+// Enhanced detailed export
 async function exportDetailed() {
     const jobNumber = document.getElementById('jobNumber').value;
     const companyName = document.getElementById('companyName').value || 'Company Name';
@@ -390,11 +591,8 @@ async function exportDetailed() {
         if (entriesData.entries && entriesData.entries.length > 0) {
             const summary = calculateSummary(entriesData.entries, jobNumber);
             const csv = generateDetailedCSV(summary, entriesData.entries, companyName, jobName);
-
-            // Use report date range for filename instead of today's date
             const dates = entriesData.entries.map(e => e.entry_date).sort();
-            const lastDate = dates[dates.length - 1].replace(/-/g, '-'); // Keep as YYYY-MM-DD
-
+            const lastDate = dates[dates.length - 1].replace(/-/g, '-');
             downloadCSV(csv, `Job_${jobNumber}_Detailed_${lastDate}.csv`);
             showMessage('Detailed report exported successfully!', 'success');
         } else {
@@ -412,11 +610,14 @@ function calculateSummary(entries, jobNumber) {
     const entriesSummary = [];
 
     entries.forEach(entry => {
-        const entryTotal = entry.line_items.reduce((sum, item) => sum + item.total_amount, 0);
+        const materialsTotal = entry.line_items.reduce((sum, item) => sum + item.total_amount, 0);
+        const laborTotal = entry.labor_entries ? entry.labor_entries.reduce((sum, item) => sum + item.total_amount, 0) : 0;
+        const entryTotal = materialsTotal + laborTotal;
         grandTotal += entryTotal;
+
         entriesSummary.push({
             date: entry.entry_date,
-            item_count: entry.line_items.length,
+            item_count: entry.line_items.length + (entry.labor_entries ? entry.labor_entries.length : 0),
             total: entryTotal
         });
     });
@@ -429,7 +630,7 @@ function calculateSummary(entries, jobNumber) {
     };
 }
 
-// Generate enhanced summary CSV (Excel/Numbers compatible)
+// Generate enhanced summary CSV
 function generateEnhancedCSV(summary, companyName, jobName) {
     const lines = [];
     const today = new Date();
@@ -439,7 +640,6 @@ function generateEnhancedCSV(summary, companyName, jobName) {
         day: 'numeric'
     });
 
-    // Header
     lines.push(companyName);
     lines.push('Time & Materials Summary Report');
     lines.push('');
@@ -447,25 +647,18 @@ function generateEnhancedCSV(summary, companyName, jobName) {
     if (jobName) lines.push(`Job Name:,${jobName}`);
     lines.push(`Report Generated:,${reportDate}`);
     lines.push('');
-
-    // Summary
     lines.push('SUMMARY');
     lines.push('=====================================');
     lines.push(`Total Days:,${summary.total_days}`);
     lines.push(`Grand Total:,${formatCurrency(summary.grand_total)}`);
     lines.push('');
-
-    // Daily breakdown
     lines.push('DAILY BREAKDOWN');
     lines.push('=====================================');
     lines.push('Date,Day,Items,Daily Total');
 
     summary.entries.forEach(entry => {
-        // Parse date correctly to avoid timezone issues
-        // entry.date is in format "YYYY-MM-DD"
         const [year, month, day] = entry.date.split('-').map(Number);
-        const date = new Date(year, month - 1, day); // month is 0-indexed
-
+        const date = new Date(year, month - 1, day);
         const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
         const formattedDate = date.toLocaleDateString('en-US', {
             month: 'short',
@@ -477,11 +670,10 @@ function generateEnhancedCSV(summary, companyName, jobName) {
 
     lines.push('=====================================');
     lines.push(`TOTAL:,,${summary.entries.reduce((sum, e) => sum + e.item_count, 0)},${formatCurrency(summary.grand_total)}`);
-
     return lines.join('\n');
 }
 
-// Generate detailed breakdown CSV (Excel/Numbers compatible)
+// Generate detailed breakdown CSV
 function generateDetailedCSV(summary, entries, companyName, jobName) {
     const lines = [];
     const today = new Date();
@@ -491,17 +683,13 @@ function generateDetailedCSV(summary, entries, companyName, jobName) {
         day: 'numeric'
     });
 
-    // Calculate date range from entries
     const dates = entries.map(e => e.entry_date).sort();
     const firstDate = dates[0];
     const lastDate = dates[dates.length - 1];
-
-    // Parse dates correctly to avoid timezone issues
     const [y1, m1, d1] = firstDate.split('-').map(Number);
     const [y2, m2, d2] = lastDate.split('-').map(Number);
     const startDate = new Date(y1, m1 - 1, d1);
     const endDate = new Date(y2, m2 - 1, d2);
-
     const formattedStartDate = startDate.toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
@@ -513,7 +701,6 @@ function generateDetailedCSV(summary, entries, companyName, jobName) {
         year: 'numeric'
     });
 
-    // Header
     lines.push(companyName);
     lines.push('Time & Materials Detailed Report');
     lines.push('');
@@ -523,9 +710,7 @@ function generateDetailedCSV(summary, entries, companyName, jobName) {
     lines.push(`Report Generated:,${reportDate}`);
     lines.push('');
 
-    // Aggregate items across all days by category
     const itemTotals = {};
-
     entries.forEach(entry => {
         entry.line_items.forEach(item => {
             const key = `${item.category}|${item.material_name}|${item.unit}|${item.unit_price}`;
@@ -544,7 +729,6 @@ function generateDetailedCSV(summary, entries, companyName, jobName) {
         });
     });
 
-    // Group by category
     const byCategory = {};
     Object.values(itemTotals).forEach(item => {
         if (!byCategory[item.category]) {
@@ -553,10 +737,7 @@ function generateDetailedCSV(summary, entries, companyName, jobName) {
         byCategory[item.category].push(item);
     });
 
-    // Category order
     const categoryOrder = ['EQUIPMENT', 'MATERIALS', 'PPE', 'CONSUMABLES', 'FUEL'];
-
-    // Output by category
     lines.push('DETAILED BREAKDOWN BY CATEGORY');
     lines.push('=============================================================');
     lines.push('');
@@ -566,13 +747,10 @@ function generateDetailedCSV(summary, entries, companyName, jobName) {
             lines.push(category);
             lines.push('-------------------------------------------------------------');
             lines.push('Item,Unit,Quantity,Unit Price,Total');
-
             byCategory[category].forEach(item => {
-                // Format quantity to avoid unnecessary decimals
                 const qty = item.total_quantity % 1 === 0 ? item.total_quantity.toFixed(0) : item.total_quantity.toFixed(2);
                 lines.push(`"${item.name}",${item.unit},${qty},${formatCurrency(item.unit_price)},${formatCurrency(item.total_amount)}`);
             });
-
             const categoryTotal = byCategory[category].reduce((sum, item) => sum + item.total_amount, 0);
             lines.push(`${category} SUBTOTAL:,,,${formatCurrency(categoryTotal)}`);
             lines.push('');
@@ -581,13 +759,11 @@ function generateDetailedCSV(summary, entries, companyName, jobName) {
 
     lines.push('=============================================================');
     lines.push(`GRAND TOTAL:,,,${formatCurrency(summary.grand_total)}`);
-
     return lines.join('\n');
 }
 
-// Download CSV with proper encoding
+// Download CSV
 function downloadCSV(csv, filename) {
-    // Use UTF-8 BOM for proper Excel/Numbers handling
     const BOM = '\uFEFF';
     const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
     const url = window.URL.createObjectURL(blob);
@@ -602,15 +778,11 @@ function downloadCSV(csv, filename) {
 
 // Show message
 function showMessage(message, type = 'info') {
-    // Remove any existing messages
     document.querySelectorAll('.success-message, .error-message, .info-message').forEach(msg => msg.remove());
-
     const messageDiv = document.createElement('div');
     messageDiv.className = type === 'success' ? 'success-message' : (type === 'error' ? 'error-message' : 'info-message');
     messageDiv.textContent = message;
-
     const container = document.querySelector('.form-container');
     container.insertBefore(messageDiv, container.firstChild);
-
     setTimeout(() => messageDiv.remove(), 5000);
 }
