@@ -127,142 +127,145 @@ EXPLANATION:
         <!-- Actions -->
         <div class="actions-bar" id="actionsBar" style="display: none;">
             <button id="saveBtn" class="btn btn-primary">💾 Save Entry</button>
+            <button id="exportCurrentDayBtn" class="btn btn-secondary">📄 Export This Day</button>
             <button id="exportBtn" class="btn btn-success">📊 Export Summary</button>
             <button id="exportDetailedBtn" class="btn btn-success">📋 Export Detailed</button>
+            <button id="generateInvoiceBtn" class="btn btn-success">📄 Generate Invoice</button>
             <div class="total-display">
                 <span>Daily Total:</span>
                 <strong id="dailyTotal">$0.00</strong>
             </div>
         </div>
-    </div>
 
-    <!-- Add this modal dialog to your index.html, right before the closing </body> tag -->
+        <!-- Add this modal dialog to your index.html, right before the closing </body> tag -->
 
-    <!-- Invoice Generation Modal -->
-    <div id="invoiceModal" class="modal" style="display: none;">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Generate Invoice</h2>
-                <span class="close-modal" onclick="closeInvoiceModal()">&times;</span>
+        <!-- Invoice Generation Modal -->
+        <div id="invoiceModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Generate Invoice</h2>
+                    <span class="close-modal" onclick="closeInvoiceModal()">&times;</span>
+                </div>
+
+                <form id="invoiceForm">
+                    <!-- Invoice Info -->
+                    <div class="form-section">
+                        <h3>Invoice Information</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Job Number *</label>
+                                <input type="text" id="inv_job_number" required readonly />
+                            </div>
+                            <div class="form-group">
+                                <label>Job Name *</label>
+                                <input type="text" id="inv_job_name" required />
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Purchase Order #</label>
+                                <input type="text" id="inv_purchase_order" />
+                            </div>
+                            <div class="form-group">
+                                <label>Payment Terms (Days)</label>
+                                <input type="number" id="inv_payment_terms" value="30" />
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Remit To Email</label>
+                                <input type="email" id="inv_remit_email" />
+                            </div>
+                            <div class="form-group">
+                                <label>Ship To Location *</label>
+                                <input type="text" id="inv_ship_to" required />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Company Info (Your Company) -->
+                    <div class="form-section">
+                        <h3>From (Your Company)</h3>
+                        <div class="form-row">
+                            <div class="form-group full-width">
+                                <label>Company Name *</label>
+                                <input type="text" id="inv_company_name" value="Tri-State Painting, LLC (TSI)"
+                                    required />
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group full-width">
+                                <label>Address Line 1 *</label>
+                                <input type="text" id="inv_company_address1" value="612 West Main Street Unit 2"
+                                    required />
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group full-width">
+                                <label>Address Line 2 *</label>
+                                <input type="text" id="inv_company_address2" value="Tilton, NH 03276" required />
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Phone *</label>
+                                <input type="tel" id="inv_company_phone" value="(603) 286-7657" required />
+                            </div>
+                            <div class="form-group">
+                                <label>Fax</label>
+                                <input type="tel" id="inv_company_fax" value="(603) 286-7882" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bill To Info (Client) -->
+                    <div class="form-section">
+                        <h3>Bill To (Client)</h3>
+                        <div class="form-row">
+                            <div class="form-group full-width">
+                                <label>Company Name *</label>
+                                <input type="text" id="inv_billto_name" required />
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group full-width">
+                                <label>Address Line 1 *</label>
+                                <input type="text" id="inv_billto_address1" required />
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group full-width">
+                                <label>Address Line 2 *</label>
+                                <input type="text" id="inv_billto_address2" required />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Date Range (Optional) -->
+                    <div class="form-section">
+                        <h3>Date Range (Optional - leave blank for all entries)</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Start Date</label>
+                                <input type="date" id="inv_start_date" />
+                            </div>
+                            <div class="form-group">
+                                <label>End Date</label>
+                                <input type="date" id="inv_end_date" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeInvoiceModal()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Generate Invoice</button>
+                    </div>
+                </form>
             </div>
-
-            <form id="invoiceForm">
-                <!-- Invoice Info -->
-                <div class="form-section">
-                    <h3>Invoice Information</h3>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Job Number *</label>
-                            <input type="text" id="inv_job_number" required readonly />
-                        </div>
-                        <div class="form-group">
-                            <label>Job Name *</label>
-                            <input type="text" id="inv_job_name" required />
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Purchase Order #</label>
-                            <input type="text" id="inv_purchase_order" />
-                        </div>
-                        <div class="form-group">
-                            <label>Payment Terms (Days)</label>
-                            <input type="number" id="inv_payment_terms" value="30" />
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Remit To Email</label>
-                            <input type="email" id="inv_remit_email" />
-                        </div>
-                        <div class="form-group">
-                            <label>Ship To Location *</label>
-                            <input type="text" id="inv_ship_to" required />
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Company Info (Your Company) -->
-                <div class="form-section">
-                    <h3>From (Your Company)</h3>
-                    <div class="form-row">
-                        <div class="form-group full-width">
-                            <label>Company Name *</label>
-                            <input type="text" id="inv_company_name" value="Tri-State Painting, LLC (TSI)" required />
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group full-width">
-                            <label>Address Line 1 *</label>
-                            <input type="text" id="inv_company_address1" value="612 West Main Street Unit 2" required />
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group full-width">
-                            <label>Address Line 2 *</label>
-                            <input type="text" id="inv_company_address2" value="Tilton, NH 03276" required />
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Phone *</label>
-                            <input type="tel" id="inv_company_phone" value="(603) 286-7657" required />
-                        </div>
-                        <div class="form-group">
-                            <label>Fax</label>
-                            <input type="tel" id="inv_company_fax" value="(603) 286-7882" />
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Bill To Info (Client) -->
-                <div class="form-section">
-                    <h3>Bill To (Client)</h3>
-                    <div class="form-row">
-                        <div class="form-group full-width">
-                            <label>Company Name *</label>
-                            <input type="text" id="inv_billto_name" required />
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group full-width">
-                            <label>Address Line 1 *</label>
-                            <input type="text" id="inv_billto_address1" required />
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group full-width">
-                            <label>Address Line 2 *</label>
-                            <input type="text" id="inv_billto_address2" required />
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Date Range (Optional) -->
-                <div class="form-section">
-                    <h3>Date Range (Optional - leave blank for all entries)</h3>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label>Start Date</label>
-                            <input type="date" id="inv_start_date" />
-                        </div>
-                        <div class="form-group">
-                            <label>End Date</label>
-                            <input type="date" id="inv_end_date" />
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Actions -->
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeInvoiceModal()">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Generate Invoice</button>
-                </div>
-            </form>
         </div>
-    </div>
 
-    <script src="app.js"></script>
+        <script src="app.js"></script>
 </body>
 
 </html>

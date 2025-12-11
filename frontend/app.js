@@ -67,6 +67,7 @@ async function init() {
     document.getElementById('loadBtn').addEventListener('click', loadEntry);
     document.getElementById('newBtn').addEventListener('click', newEntry);
     document.getElementById('saveBtn').addEventListener('click', saveEntry);
+    document.getElementById('exportCurrentDayBtn').addEventListener('click', exportCurrentDay);
     document.getElementById('exportBtn').addEventListener('click', exportJob);
     document.getElementById('exportDetailedBtn').addEventListener('click', exportDetailed);
     document.getElementById('generateInvoiceBtn').addEventListener('click', openInvoiceModal);
@@ -180,6 +181,7 @@ function loadJobInfo(jobNumber) {
     }
 }
 
+
 // Display the form with materials grouped by category
 function displayForm(existingLineItems = [], existingLaborItems = []) {
     const container = document.getElementById('formContainer');
@@ -211,7 +213,18 @@ function displayForm(existingLineItems = [], existingLaborItems = []) {
     // Setup quantity input listeners
     setupQuantityListeners();
 
-    // Calculate initial totals
+    // ============================================
+    // FIX: Force recalculate all labor totals after form loads
+    // ============================================
+    laborRoles.forEach(role => {
+        const rows = document.querySelectorAll(`.employee-row[data-role-id="${role.id}"]`);
+        rows.forEach(row => {
+            const rowId = row.getAttribute('data-row-id');
+            updateEmployeeTotal(rowId, role);
+        });
+    });
+
+    // Calculate initial totals (this now includes the labor totals we just calculated)
     calculateTotal();
 }
 
