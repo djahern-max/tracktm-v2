@@ -9,7 +9,7 @@ let laborRowCounter = 0; // For unique row IDs
 let equipmentRentals = [];
 
 // ============================================
-// HELPER FUNCTIONS - ADD THESE THREE HERE ⬇️
+// HELPER FUNCTIONS - ADD THESE THREE HERE Ã¢Â¬â€¡Ã¯Â¸Â
 // ============================================
 
 // Helper function to get date range from header fields
@@ -72,7 +72,12 @@ async function init() {
     document.getElementById('exportCurrentDayBtn').addEventListener('click', exportCurrentDay);
     document.getElementById('exportBtn').addEventListener('click', exportJob);
     document.getElementById('exportDetailedBtn').addEventListener('click', exportDetailed);
-    document.getElementById('generateInvoiceBtn').addEventListener('click', openInvoiceModal);
+    document.getElementById('generateInvoiceBtn').addEventListener('click', () => InvoiceModule.open());
+
+    // Initialize invoice module
+    if (window.InvoiceModule) {
+        InvoiceModule.init();
+    }
 }
 
 async function loadEquipmentRentals() {
@@ -587,7 +592,7 @@ function createEmployeeRow(role, employeeData = {}) {
             <span>Night</span>
         </label>
         <div class="labor-total" data-row-id="${rowId}">$0.00</div>
-        <button class="btn-remove-employee" data-row-id="${rowId}">×</button>
+        <button class="btn-remove-employee" data-row-id="${rowId}">Ãƒâ€”</button>
     `;
 
     // Setup event listeners
@@ -734,7 +739,8 @@ function createCategorySection(category, items, existingLineItems) {
 
 // Setup quantity and price input listeners
 function setupQuantityListeners() {
-    document.querySelectorAll('.qty-input, .price-input').forEach(input => {
+    // Only listen to MATERIAL inputs, not equipment
+    document.querySelectorAll('.qty-input:not(.equipment-qty-input), .price-input:not(.equipment-rate-input)').forEach(input => {
         input.addEventListener('input', (e) => {
             const materialId = e.target.dataset.materialId;
             updateLineTotal(materialId);
@@ -742,7 +748,6 @@ function setupQuantityListeners() {
         });
     });
 }
-
 // Update line item total
 function updateLineTotal(materialId) {
     const qtyInput = document.querySelector(`.qty-input[data-material-id="${materialId}"]`);
@@ -831,7 +836,8 @@ async function saveEntry() {
             equipmentItems.push({
                 equipment_rental_id: equipmentId,
                 quantity: qty,
-                unit_rate: unitRate
+                unit_rate: unitRate,
+                rate_period: "daily"  // Add this line
             });
         }
     });
@@ -1222,6 +1228,66 @@ function generateDetailedCSV(summary, entries, companyName, jobName) {
     lines.push('');
     lines.push('');
 
+    // ========== EQUIPMENT RENTALS SECTION (NEW!) ==========
+    const equipmentTotals = {};
+    let equipmentGrandTotal = 0;
+
+    entries.forEach(entry => {
+        if (entry.equipment_rental_items && entry.equipment_rental_items.length > 0) {
+            entry.equipment_rental_items.forEach(equip => {
+                const key = `${equip.category}|${equip.equipment_name}|${equip.unit}|${equip.unit_rate}`;
+                if (!equipmentTotals[key]) {
+                    equipmentTotals[key] = {
+                        category: equip.category,
+                        name: equip.equipment_name,
+                        unit: equip.unit,
+                        unit_rate: equip.unit_rate,
+                        total_quantity: 0,
+                        total_amount: 0
+                    };
+                }
+                equipmentTotals[key].total_quantity += equip.quantity;
+                equipmentTotals[key].total_amount += equip.total_amount;
+            });
+        }
+    });
+
+    // If we have equipment rentals, add them to the report
+    if (Object.keys(equipmentTotals).length > 0) {
+        const equipmentByCategory = {};
+        Object.values(equipmentTotals).forEach(item => {
+            if (!equipmentByCategory[item.category]) {
+                equipmentByCategory[item.category] = [];
+            }
+            equipmentByCategory[item.category].push(item);
+        });
+
+        lines.push('EQUIPMENT RENTALS BREAKDOWN');
+        lines.push('=============================================================');
+        lines.push('');
+
+        // Sort categories alphabetically
+        const equipmentCategories = Object.keys(equipmentByCategory).sort();
+
+        equipmentCategories.forEach(category => {
+            lines.push(category);
+            lines.push('-------------------------------------------------------------');
+            lines.push('Equipment,Unit,Quantity,Daily Rate,Total');
+            equipmentByCategory[category].forEach(item => {
+                const qty = item.total_quantity % 1 === 0 ? item.total_quantity.toFixed(0) : item.total_quantity.toFixed(2);
+                lines.push(`"${item.name}",${item.unit},${qty},${formatCurrency(item.unit_rate)},${formatCurrency(item.total_amount)}`);
+            });
+            const categoryTotal = equipmentByCategory[category].reduce((sum, item) => sum + item.total_amount, 0);
+            equipmentGrandTotal += categoryTotal;
+            lines.push(`${category} SUBTOTAL:,,,,${formatCurrency(categoryTotal)}`);
+            lines.push('');
+        });
+
+        lines.push(`EQUIPMENT RENTALS TOTAL:,,,,${formatCurrency(equipmentGrandTotal)}`);
+        lines.push('');
+        lines.push('');
+    }
+
     // ========== LABOR SECTION ==========
     const laborTotals = {};
 
@@ -1296,11 +1362,18 @@ function generateDetailedCSV(summary, entries, companyName, jobName) {
         lines.push('PROJECT TOTALS');
         lines.push('=============================================================');
         lines.push(`Materials Total:,,,,${formatCurrency(materialsGrandTotal)}`);
+        if (equipmentGrandTotal > 0) {
+            lines.push(`Equipment Rentals Total:,,,,${formatCurrency(equipmentGrandTotal)}`);
+        }
         lines.push(`Labor Total:,,,,${formatCurrency(laborGrandTotal)}`);
         lines.push('-------------------------------------------------------------');
         lines.push(`GRAND TOTAL:,,,,${formatCurrency(summary.grand_total)}`);
     } else {
         lines.push('=============================================================');
+        if (equipmentGrandTotal > 0) {
+            lines.push(`Equipment Rentals Total:,,,,${formatCurrency(equipmentGrandTotal)}`);
+            lines.push('-------------------------------------------------------------');
+        }
         lines.push(`GRAND TOTAL:,,,,${formatCurrency(summary.grand_total)}`);
     }
 
@@ -1332,190 +1405,8 @@ function showMessage(message, type = 'info') {
     setTimeout(() => messageDiv.remove(), 5000);
 }
 
-// Load saved invoice settings from localStorage
-function loadInvoiceSettings() {
-    return {
-        company_name: localStorage.getItem('inv_company_name') || 'Tri-State Painting, LLC (TSI)',
-        company_address1: localStorage.getItem('inv_company_address1') || '612 West Main Street Unit 2',
-        company_address2: localStorage.getItem('inv_company_address2') || 'Tilton, NH 03276',
-        company_phone: localStorage.getItem('inv_company_phone') || '(603) 286-7657',
-        company_fax: localStorage.getItem('inv_company_fax') || '(603) 286-7882',
-        billto_name: localStorage.getItem('inv_billto_name') || 'Reagan Marine Construction LLC',
-        billto_address1: localStorage.getItem('inv_billto_address1') || '221 Third St, 5th Floor Suite 513',
-        billto_address2: localStorage.getItem('inv_billto_address2') || 'Newport, RI 02840',
-        remit_email: localStorage.getItem('inv_remit_email') || 'AP@reaganmarine.com',
-        ship_to: localStorage.getItem('inv_ship_to') || 'Newport, RI',
-        payment_terms: localStorage.getItem('inv_payment_terms') || '30'
-    };
-}
 
-// Save invoice settings to localStorage
-function saveInvoiceSettings(data) {
-    localStorage.setItem('inv_company_name', data.company_name);
-    localStorage.setItem('inv_company_address1', data.company_address1);
-    localStorage.setItem('inv_company_address2', data.company_address2);
-    localStorage.setItem('inv_company_phone', data.company_phone);
-    localStorage.setItem('inv_company_fax', data.company_fax);
-    localStorage.setItem('inv_billto_name', data.billto_name);
-    localStorage.setItem('inv_billto_address1', data.billto_address1);
-    localStorage.setItem('inv_billto_address2', data.billto_address2);
-    localStorage.setItem('inv_remit_email', data.remit_email);
-    localStorage.setItem('inv_ship_to', data.ship_to);
-    localStorage.setItem('inv_payment_terms', data.payment_terms);
-}
-
-// Open invoice modal and populate with saved/current values
-function openInvoiceModal() {
-    const jobNumber = document.getElementById('jobNumber').value;
-    const jobName = document.getElementById('jobName').value;
-
-    if (!jobNumber) {
-        alert('Please enter job number');
-        return;
-    }
-
-    // Load saved settings
-    const settings = loadInvoiceSettings();
-
-    // Get date range from header (if set)
-    const { startDate, endDate } = getDateRange();
-
-    // Populate form
-    document.getElementById('inv_job_number').value = jobNumber;
-    document.getElementById('inv_job_name').value = jobName || `Job ${jobNumber}`;
-    document.getElementById('inv_purchase_order').value = '';
-    document.getElementById('inv_payment_terms').value = settings.payment_terms;
-    document.getElementById('inv_remit_email').value = settings.remit_email;
-    document.getElementById('inv_ship_to').value = settings.ship_to;
-
-    // Company info (your company)
-    document.getElementById('inv_company_name').value = settings.company_name;
-    document.getElementById('inv_company_address1').value = settings.company_address1;
-    document.getElementById('inv_company_address2').value = settings.company_address2;
-    document.getElementById('inv_company_phone').value = settings.company_phone;
-    document.getElementById('inv_company_fax').value = settings.company_fax;
-
-    // Bill to info (client)
-    document.getElementById('inv_billto_name').value = settings.billto_name;
-    document.getElementById('inv_billto_address1').value = settings.billto_address1;
-    document.getElementById('inv_billto_address2').value = settings.billto_address2;
-
-    // PRE-FILL date range from header fields (if set)
-    document.getElementById('inv_start_date').value = startDate || '';
-    document.getElementById('inv_end_date').value = endDate || '';
-
-    // Show modal
-    const modal = document.getElementById('invoiceModal');
-    modal.style.display = 'flex';
-    modal.classList.add('show');
-}
-
-// Close invoice modal
-function closeInvoiceModal() {
-    const modal = document.getElementById('invoiceModal');
-    modal.classList.remove('show');
-    setTimeout(() => {
-        modal.style.display = 'none';
-    }, 300);
-}
-
-// Handle invoice form submission
-document.getElementById('invoiceForm').addEventListener('submit', async function (e) {
-    e.preventDefault();
-
-    // Collect form data
-    const formData = {
-        job_number: document.getElementById('inv_job_number').value,
-        job_name: document.getElementById('inv_job_name').value,
-        purchase_order: document.getElementById('inv_purchase_order').value,
-        payment_terms_days: parseInt(document.getElementById('inv_payment_terms').value),
-        remit_to_email: document.getElementById('inv_remit_email').value,
-        ship_to_location: document.getElementById('inv_ship_to').value,
-        company_name: document.getElementById('inv_company_name').value,
-        company_address_line1: document.getElementById('inv_company_address1').value,
-        company_address_line2: document.getElementById('inv_company_address2').value,
-        company_phone: document.getElementById('inv_company_phone').value,
-        company_fax: document.getElementById('inv_company_fax').value,
-        bill_to_name: document.getElementById('inv_billto_name').value,
-        bill_to_address_line1: document.getElementById('inv_billto_address1').value,
-        bill_to_address_line2: document.getElementById('inv_billto_address2').value,
-        start_date: document.getElementById('inv_start_date').value || null,
-        end_date: document.getElementById('inv_end_date').value || null
-    };
-
-    // Save settings for next time
-    saveInvoiceSettings({
-        company_name: formData.company_name,
-        company_address1: formData.company_address_line1,
-        company_address2: formData.company_address_line2,
-        company_phone: formData.company_phone,
-        company_fax: formData.company_fax,
-        billto_name: formData.bill_to_name,
-        billto_address1: formData.bill_to_address_line1,
-        billto_address2: formData.bill_to_address_line2,
-        remit_email: formData.remit_to_email,
-        ship_to: formData.ship_to_location,
-        payment_terms: formData.payment_terms_days.toString()
-    });
-
-    // Show loading state
-    const modalContent = document.querySelector('.modal-content');
-    modalContent.classList.add('loading');
-
-    try {
-        const response = await fetch(`${API_BASE}/invoice/generate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(formData)
-        });
-
-        if (response.ok) {
-            // Download the PDF
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-
-            // Generate filename
-            const today = new Date();
-            const dateStr = today.toISOString().split('T')[0];
-            a.download = `Invoice_${formData.job_number}_${dateStr}.pdf`;
-
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-
-            // Close modal and show success
-            closeInvoiceModal();
-            showMessage('Invoice generated successfully!', 'success');
-        } else {
-            const error = await response.json();
-            throw new Error(error.detail || 'Unknown error');
-        }
-    } catch (error) {
-        console.error('Error generating invoice:', error);
-        alert('Failed to generate invoice: ' + error.message);
-    } finally {
-        // Remove loading state
-        modalContent.classList.remove('loading');
-    }
-});
-
-// Close modal when clicking outside
-window.addEventListener('click', function (event) {
-    const modal = document.getElementById('invoiceModal');
-    if (event.target === modal) {
-        closeInvoiceModal();
-    }
-});
-
-// Close modal on ESC key
-window.addEventListener('keydown', function (event) {
-    if (event.key === 'Escape') {
-        const modal = document.getElementById('invoiceModal');
-        if (modal.classList.contains('show')) {
-            closeInvoiceModal();
-        }
-    }
-});
+// ============================================
+// INVOICE GENERATION - See invoice.js module
+// ============================================
+// All invoice functionality has been moved to invoice.js for better organization

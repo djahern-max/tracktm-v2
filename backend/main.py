@@ -26,6 +26,8 @@ from database import (
     DailyEntry,
     EntryLineItem,
     LaborEntry,
+    EquipmentRentalEntry,
+    PassThroughExpense,
     init_db,
 )
 
@@ -35,7 +37,7 @@ from database import (
 async def lifespan(app: FastAPI):
     # Startup
     init_db()
-    print("✅ Database initialized")
+    print("Ã¢Å“â€¦ Database initialized")
     yield
 
 
@@ -83,11 +85,32 @@ class LaborItemInput(BaseModel):
     night_shift: bool = False
 
 
+class EquipmentRentalInput(BaseModel):
+    equipment_rental_id: int
+    quantity: float
+    rate_period: str = "daily"  # Add this line
+    unit_rate: Optional[float] = None
+
+
+class PassThroughExpenseInput(BaseModel):
+    vendor_name: str
+    vendor_invoice_number: Optional[str] = None
+    description: str
+    amount: float
+    invoice_date: Optional[str] = None  # YYYY-MM-DD
+    category: str = "Equipment Rental"
+    billing_period_start: Optional[str] = None  # YYYY-MM-DD
+    billing_period_end: Optional[str] = None  # YYYY-MM-DD
+    notes: Optional[str] = None
+
+
 class DailyEntryInput(BaseModel):
     job_number: str
     entry_date: str  # YYYY-MM-DD
     line_items: List[LineItemInput]
     labor_items: Optional[List[LaborItemInput]] = []
+    equipment_items: Optional[List[EquipmentRentalInput]] = []
+    passthrough_items: Optional[List[PassThroughExpenseInput]] = []
 
 
 class DailyEntryResponse(BaseModel):
@@ -129,12 +152,6 @@ class EquipmentRentalResponse(BaseModel):
     monthly_rate: Optional[float]
     year: str
     active: bool
-
-
-class EquipmentRentalInput(BaseModel):
-    equipment_rental_id: int
-    quantity: float
-    rate_period: str = "daily"  # daily, weekly, monthly
 
 
 # Dependency
@@ -259,7 +276,7 @@ def get_entry_by_date(job_number: str, entry_date: str, db: Session = Depends(ge
 
 @app.post("/api/entries")
 def create_or_update_entry(entry_input: DailyEntryInput, db: Session = Depends(get_db)):
-    """Create or update a daily entry with materials and labor"""
+    """Create or update a daily entry with materials, labor, and equipment rentals"""
 
     # Parse date string to date object
     entry_date = datetime.strptime(entry_input.entry_date, "%Y-%m-%d").date()
@@ -278,12 +295,18 @@ def create_or_update_entry(entry_input: DailyEntryInput, db: Session = Depends(g
         # Update existing entry
         daily_entry = existing_entry
 
-        # Delete existing line items and labor entries
+        # Delete existing line items, labor entries, equipment rentals, and passthrough expenses
         db.query(EntryLineItem).filter(
             EntryLineItem.daily_entry_id == daily_entry.id
         ).delete()
         db.query(LaborEntry).filter(
             LaborEntry.daily_entry_id == daily_entry.id
+        ).delete()
+        db.query(EquipmentRentalEntry).filter(
+            EquipmentRentalEntry.daily_entry_id == daily_entry.id
+        ).delete()
+        db.query(PassThroughExpense).filter(
+            PassThroughExpense.daily_entry_id == daily_entry.id
         ).delete()
     else:
         # Create new entry
@@ -324,6 +347,57 @@ def create_or_update_entry(entry_input: DailyEntryInput, db: Session = Depends(g
             )
             db.add(line_item)
 
+    # Add equipment rental items (only for non-zero quantities)
+    if entry_input.equipment_items:
+        for equip_item in entry_input.equipment_items:
+            if equip_item.quantity > 0:
+                # Fetch equipment details from equipment_rental_rates table
+                result = db.execute(
+                    text(
+                        """
+                        SELECT name, category, unit, daily_rate, weekly_rate, monthly_rate
+                        FROM equipment_rental_rates
+                        WHERE id = :equipment_id
+                    """
+                    ),
+                    {"equipment_id": equip_item.equipment_rental_id},
+                ).fetchone()
+
+                if not result:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Equipment rental ID {equip_item.equipment_rental_id} not found",
+                    )
+
+                equipment_name = result[0]
+                equipment_category = result[1]
+                unit = result[2]
+
+                # Determine rate based on rate_period (default to daily)
+                if equip_item.rate_period == "weekly":
+                    rate = result[4]  # weekly_rate
+                elif equip_item.rate_period == "monthly":
+                    rate = result[5]  # monthly_rate
+                else:
+                    rate = result[3]  # daily_rate
+
+                if rate is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"No {equip_item.rate_period} rate available for {equipment_name}",
+                    )
+
+                equipment_entry = EquipmentRentalEntry(
+                    daily_entry_id=daily_entry.id,
+                    equipment_rental_id=equip_item.equipment_rental_id,
+                    quantity=Decimal(str(equip_item.quantity)),
+                    unit_rate=Decimal(str(rate)),
+                    equipment_name=equipment_name,
+                    equipment_category=equipment_category,
+                    unit=unit,
+                )
+                db.add(equipment_entry)
+
     # Add labor entries (only for non-zero hours)
     if entry_input.labor_items:
         for labor_item in entry_input.labor_items:
@@ -350,6 +424,42 @@ def create_or_update_entry(entry_input: DailyEntryInput, db: Session = Depends(g
                     night_shift=labor_item.night_shift,
                 )
                 db.add(labor_entry)
+
+    # Add pass-through expenses
+    if entry_input.passthrough_items:
+        for passthrough in entry_input.passthrough_items:
+            # Parse dates if provided
+            invoice_date = None
+            if passthrough.invoice_date:
+                invoice_date = datetime.strptime(
+                    passthrough.invoice_date, "%Y-%m-%d"
+                ).date()
+
+            billing_start = None
+            if passthrough.billing_period_start:
+                billing_start = datetime.strptime(
+                    passthrough.billing_period_start, "%Y-%m-%d"
+                ).date()
+
+            billing_end = None
+            if passthrough.billing_period_end:
+                billing_end = datetime.strptime(
+                    passthrough.billing_period_end, "%Y-%m-%d"
+                ).date()
+
+            passthrough_entry = PassThroughExpense(
+                daily_entry_id=daily_entry.id,
+                vendor_name=passthrough.vendor_name,
+                vendor_invoice_number=passthrough.vendor_invoice_number,
+                description=passthrough.description,
+                amount=Decimal(str(passthrough.amount)),
+                invoice_date=invoice_date,
+                category=passthrough.category,
+                billing_period_start=billing_start,
+                billing_period_end=billing_end,
+                notes=passthrough.notes,
+            )
+            db.add(passthrough_entry)
 
     db.commit()
     db.refresh(daily_entry)
@@ -387,16 +497,21 @@ def get_job_summary(job_number: str, db: Session = Depends(get_db)):
     for entry in entries:
         # Materials total
         materials_total = sum(item.total_amount for item in entry.line_items)
+        # Equipment rentals total
+        equipment_total = sum(
+            equip.total_amount for equip in entry.equipment_rental_items
+        )
         # Labor total
         labor_total = sum(labor.total_amount for labor in entry.labor_entries)
         # Combined total
-        entry_total = materials_total + labor_total
+        entry_total = materials_total + equipment_total + labor_total
         grand_total += entry_total
 
         entries_summary.append(
             {
                 "date": str(entry.entry_date),
                 "item_count": len(entry.line_items),
+                "equipment_count": len(entry.equipment_rental_items),
                 "labor_count": len(entry.labor_entries),
                 "total": entry_total,
             }
@@ -434,6 +549,8 @@ def generate_invoice(request: InvoiceRequest, db: Session = Depends(get_db)):
         # Calculate totals
         labor_total = 0.0
         materials_total = 0.0
+        equipment_total = 0.0
+        passthrough_total = 0.0
 
         period_start = None
         period_end = None
@@ -449,9 +566,17 @@ def generate_invoice(request: InvoiceRequest, db: Session = Depends(get_db)):
             for item in entry.line_items:
                 materials_total += item.total_amount
 
+            # Sum equipment rentals
+            for equip in entry.equipment_rental_items:
+                equipment_total += equip.total_amount
+
             # Sum labor
             for labor in entry.labor_entries:
                 labor_total += labor.total_amount
+
+            # Sum pass-through expenses
+            for expense in entry.passthrough_expenses:
+                passthrough_total += float(expense.amount)
 
         # Prepare invoice data
         invoice_data = {
@@ -473,8 +598,13 @@ def generate_invoice(request: InvoiceRequest, db: Session = Depends(get_db)):
             "period_end": str(period_end) if period_end else None,
         }
 
-        # Generate PDF (returns BytesIO buffer)
-        pdf_buffer = generate_invoice_pdf(invoice_data, labor_total, materials_total)
+        # Combine materials and equipment into a single total for invoice
+        combined_materials_total = materials_total + equipment_total
+
+        # Generate PDF with 3 line items (returns BytesIO buffer)
+        pdf_buffer = generate_invoice_pdf(
+            invoice_data, labor_total, combined_materials_total, passthrough_total
+        )
 
         # Generate filename
         from datetime import datetime

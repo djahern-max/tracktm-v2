@@ -126,11 +126,11 @@ EXPLANATION:
 
         <!-- Actions -->
         <div class="actions-bar" id="actionsBar" style="display: none;">
-            <button id="saveBtn" class="btn btn-primary">💾 Save Entry</button>
-            <button id="exportCurrentDayBtn" class="btn btn-secondary">📄 Export This Day</button>
-            <button id="exportBtn" class="btn btn-success">📊 Export Summary</button>
-            <button id="exportDetailedBtn" class="btn btn-success">📋 Export Detailed</button>
-            <button id="generateInvoiceBtn" class="btn btn-success">📄 Generate Invoice</button>
+            <button id="saveBtn" class="btn btn-primary">ðŸ’¾ Save Entry</button>
+            <button id="exportCurrentDayBtn" class="btn btn-secondary">ðŸ“„ Export This Day</button>
+            <button id="exportBtn" class="btn btn-success">ðŸ“Š Export Summary</button>
+            <button id="exportDetailedBtn" class="btn btn-success">ðŸ“‹ Export Detailed</button>
+            <button id="generateInvoiceBtn" class="btn btn-success">ðŸ“„ Generate Invoice</button>
             <div class="total-display">
                 <span>Daily Total:</span>
                 <strong id="dailyTotal">$0.00</strong>
@@ -144,7 +144,7 @@ EXPLANATION:
             <div class="modal-content">
                 <div class="modal-header">
                     <h2>Generate Invoice</h2>
-                    <span class="close-modal" onclick="closeInvoiceModal()">&times;</span>
+                    <span class="close-modal">&times;</span>
                 </div>
 
                 <form id="invoiceForm">
@@ -258,7 +258,7 @@ EXPLANATION:
 
                     <!-- Actions -->
                     <div class="modal-actions">
-                        <button type="button" class="btn btn-secondary" onclick="closeInvoiceModal()">Cancel</button>
+                        <button type="button" class="btn btn-secondary">Cancel</button>
                         <button type="submit" class="btn btn-primary">Generate Invoice</button>
                     </div>
                 </form>
@@ -266,6 +266,7 @@ EXPLANATION:
         </div>
 
         <script src="app.js"></script>
+        <script src="invoice.js"></script>
 </body>
 
 </html>

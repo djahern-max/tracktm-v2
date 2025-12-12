@@ -1,67 +1,122 @@
 """
-Invoice Generator - Creates PDF invoices using ReportLab
-Matches TSI invoice format with 2 line items: Labor + Materials
+Invoice Generator - TSI Branded Design
+Creates professional PDF invoices with TSI logo and color scheme
+Includes automatic PDF backup functionality
 """
 
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Table,
+    TableStyle,
+    Paragraph,
+    Spacer,
+    Image,
+)
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_RIGHT, TA_CENTER, TA_LEFT
 from datetime import datetime, timedelta
 from io import BytesIO
+import os
 
 
-class InvoiceGenerator:
-    def __init__(self):
+class TSIInvoiceGenerator:
+    """Professional invoice generator with TSI branding"""
+
+    # TSI Brand Colors
+    TSI_BROWN = colors.HexColor("#8B6F47")  # TSI logo brown
+    TSI_DARK_BROWN = colors.HexColor("#6B5637")  # Darker brown for text
+    TSI_BLUE = colors.HexColor("#1e3a8a")  # Navy blue for accents
+    GRAY_DARK = colors.HexColor("#1f2937")  # Dark gray for text
+    GRAY_MED = colors.HexColor("#6b7280")  # Medium gray
+    GRAY_LIGHT = colors.HexColor("#f3f4f6")  # Light gray for backgrounds
+
+    def __init__(self, logo_path=None):
         self.width, self.height = letter
         self.styles = getSampleStyleSheet()
+        self.logo_path = logo_path or "logo.png"  # TSI logo
         self._setup_custom_styles()
 
     def _setup_custom_styles(self):
-        """Setup custom paragraph styles"""
+        """Setup TSI-branded styles"""
+
+        # Company name - TSI Brown
         self.styles.add(
             ParagraphStyle(
                 name="CompanyName",
                 parent=self.styles["Normal"],
-                fontSize=16,
-                textColor=colors.HexColor("#1a56db"),
-                spaceAfter=6,
+                fontSize=18,
+                textColor=self.TSI_BROWN,
                 fontName="Helvetica-Bold",
+                spaceAfter=2,
+                leading=22,
+                wordWrap="LTR",
             )
         )
 
+        # Invoice title
         self.styles.add(
             ParagraphStyle(
                 name="InvoiceTitle",
                 parent=self.styles["Normal"],
-                fontSize=14,
-                textColor=colors.HexColor("#1a56db"),
+                fontSize=20,
+                textColor=self.TSI_BROWN,
                 alignment=TA_RIGHT,
                 fontName="Helvetica-Bold",
             )
         )
 
+        # Section headers
         self.styles.add(
             ParagraphStyle(
                 name="SectionHeader",
                 parent=self.styles["Normal"],
-                fontSize=10,
-                textColor=colors.HexColor("#374151"),
+                fontSize=9,
+                textColor=self.TSI_DARK_BROWN,
                 fontName="Helvetica-Bold",
-                spaceAfter=4,
+                spaceAfter=3,
             )
         )
 
-    def generate_invoice(self, invoice_data, labor_total, materials_total):
+        # Small text
+        self.styles.add(
+            ParagraphStyle(
+                name="SmallText",
+                parent=self.styles["Normal"],
+                fontSize=9,
+                textColor=self.GRAY_DARK,
+            )
+        )
+
+        # Table text
+        self.styles.add(
+            ParagraphStyle(
+                name="TableText",
+                parent=self.styles["Normal"],
+                fontSize=10,
+                textColor=self.GRAY_DARK,
+            )
+        )
+
+    def generate_invoice(
+        self,
+        invoice_data,
+        labor_total,
+        materials_total,
+        passthrough_total=0,
+        save_backup=True,
+    ):
         """
-        Generate invoice PDF
+        Generate TSI-branded invoice PDF
 
         Args:
             invoice_data: Dictionary with invoice details
             labor_total: Total labor cost
-            materials_total: Total materials cost
+            materials_total: Total materials + equipment cost
+            passthrough_total: Total pass-through expenses
+            save_backup: If True, saves PDF to invoices/ directory
 
         Returns:
             BytesIO buffer containing PDF
@@ -72,187 +127,329 @@ class InvoiceGenerator:
             pagesize=letter,
             rightMargin=0.75 * inch,
             leftMargin=0.75 * inch,
-            topMargin=0.75 * inch,
+            topMargin=0.5 * inch,
             bottomMargin=0.75 * inch,
         )
 
-        # Build invoice content
         story = []
 
-        # Header section
+        # Header with logo
         story.extend(self._create_header(invoice_data))
-        story.append(Spacer(1, 0.3 * inch))
+        story.append(Spacer(1, 0.2 * inch))
 
-        # Invoice details section
+        # Separator line
+        story.append(self._create_line())
+        story.append(Spacer(1, 0.2 * inch))
+
+        # Invoice details
         story.extend(self._create_invoice_details(invoice_data))
         story.append(Spacer(1, 0.3 * inch))
 
-        # Line items table
-        story.append(self._create_line_items_table(labor_total, materials_total))
-        story.append(Spacer(1, 0.3 * inch))
+        # Line items
+        story.append(
+            self._create_line_items_table(
+                labor_total, materials_total, passthrough_total
+            )
+        )
+        story.append(Spacer(1, 0.4 * inch))
 
-        # Total section
-        story.append(self._create_total_section(labor_total + materials_total))
+        # Total
+        story.append(
+            self._create_total_section(
+                labor_total + materials_total + passthrough_total
+            )
+        )
 
         # Build PDF
         doc.build(story)
         buffer.seek(0)
+
+        # Save backup copy if requested
+        if save_backup:
+            self._save_backup_pdf(buffer, invoice_data)
+            buffer.seek(0)  # Reset buffer after reading for backup
+
         return buffer
 
-    def _create_header(self, data):
-        """Create invoice header with company info and title"""
-        elements = []
+    def _save_backup_pdf(self, buffer, invoice_data):
+        """Save a backup copy of the invoice to invoices/ directory"""
+        try:
+            # Create invoices directory if it doesn't exist
+            invoices_dir = "invoices"
+            os.makedirs(invoices_dir, exist_ok=True)
 
-        # Create header table (company info on left, invoice title on right)
-        header_data = [
-            [
-                Paragraph(data["company_name"], self.styles["CompanyName"]),
-                Paragraph("T&M INVOICE", self.styles["InvoiceTitle"]),
-            ],
-            [
-                Paragraph(
-                    f"{data['company_address_line1']}<br/>{data['company_address_line2']}",
-                    self.styles["Normal"],
-                ),
-                "",
-            ],
-            [Paragraph(f"Phone: {data['company_phone']}", self.styles["Normal"]), ""],
-        ]
+            # Generate filename
+            date_suffix = datetime.now().strftime("%m%d%y")
+            invoice_number = f"{invoice_data['job_number']}-{date_suffix}"
+            filename = f"Invoice_{invoice_number}.pdf"
+            filepath = os.path.join(invoices_dir, filename)
 
-        if data.get("company_fax"):
-            header_data.append(
-                [Paragraph(f"Fax: {data['company_fax']}", self.styles["Normal"]), ""]
-            )
+            # Save the PDF
+            with open(filepath, "wb") as f:
+                f.write(buffer.getvalue())
 
-        header_table = Table(header_data, colWidths=[4 * inch, 2.5 * inch])
-        header_table.setStyle(
+            print(f"âœ“ Invoice backup saved: {filepath}")
+        except Exception as e:
+            print(f"Warning: Could not save invoice backup: {e}")
+
+    def _create_line(self):
+        """Create TSI brown separator line"""
+        line_data = [["", ""]]
+        line_table = Table(line_data, colWidths=[7 * inch])
+        line_table.setStyle(
             TableStyle(
                 [
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+                    ("LINEBELOW", (0, 0), (-1, 0), 1.5, self.TSI_BROWN),
                 ]
             )
         )
+        return line_table
+
+    def _create_header(self, data):
+        """Create header with TSI logo and company info"""
+        elements = []
+
+        # Try to include logo
+        logo_element = None
+        if os.path.exists(self.logo_path):
+            try:
+                logo = Image(
+                    self.logo_path,
+                    width=1.5 * inch,
+                    height=0.8 * inch,
+                    kind="proportional",
+                )
+                logo_element = logo
+            except:
+                print(f"Warning: Could not load logo from {self.logo_path}")
+
+        # Header layout: Logo + Company Name | Invoice Title
+        if logo_element:
+            # With logo
+            header_data = [
+                [
+                    logo_element,
+                    Paragraph(data["company_name"], self.styles["CompanyName"]),
+                    Paragraph("T&amp;M INVOICE", self.styles["InvoiceTitle"]),
+                ]
+            ]
+            header_table = Table(
+                header_data, colWidths=[1.5 * inch, 3.25 * inch, 2.25 * inch]
+            )
+            header_table.setStyle(
+                TableStyle(
+                    [
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        ("ALIGN", (0, 0), (0, 0), "LEFT"),
+                        ("ALIGN", (1, 0), (1, 0), "LEFT"),
+                        ("ALIGN", (2, 0), (2, 0), "RIGHT"),
+                    ]
+                )
+            )
+        else:
+            # Without logo
+            header_data = [
+                [
+                    Paragraph(data["company_name"], self.styles["CompanyName"]),
+                    Paragraph("T&amp;M INVOICE", self.styles["InvoiceTitle"]),
+                ]
+            ]
+            header_table = Table(header_data, colWidths=[4 * inch, 3 * inch])
+            header_table.setStyle(
+                TableStyle(
+                    [
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("ALIGN", (0, 0), (0, 0), "LEFT"),
+                        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+                    ]
+                )
+            )
 
         elements.append(header_table)
+
+        # Company contact info
+        contact_info = (
+            f"{data['company_address_line1']}<br/>{data['company_address_line2']}<br/>"
+        )
+        contact_info += f"Phone: {data['company_phone']}"
+        if data.get("company_fax"):
+            contact_info += f" | Fax: {data['company_fax']}"
+
+        contact_para = Paragraph(contact_info, self.styles["SmallText"])
+        elements.append(Spacer(1, 0.1 * inch))
+        elements.append(contact_para)
+
         return elements
 
     def _create_invoice_details(self, data):
-        """Create invoice metadata and bill-to section"""
+        """Create invoice details section"""
         elements = []
 
-        # Invoice metadata (right side)
+        # Invoice metadata
         invoice_date = datetime.now().strftime("%m/%d/%Y")
         due_date = (
             datetime.now() + timedelta(days=data.get("payment_terms_days", 30))
         ).strftime("%m/%d/%Y")
-
-        # Generate invoice number: {job_number}-{MMDDYY}
         date_suffix = datetime.now().strftime("%m%d%y")
         invoice_number = f"{data['job_number']}-{date_suffix}"
 
-        metadata_data = [
-            ["Invoice #:", invoice_number],
-            ["Invoice Date:", invoice_date],
-            ["Due Date:", due_date],
+        # Three columns
+        bill_to_content = [
+            Paragraph("<b>Bill To:</b>", self.styles["SectionHeader"]),
+            Paragraph(
+                f"{data['bill_to_name']}<br/>{data['bill_to_address_line1']}<br/>{data['bill_to_address_line2']}",
+                self.styles["SmallText"],
+            ),
+        ]
+
+        ship_to_content = [
+            Paragraph("<b>Ship To:</b>", self.styles["SectionHeader"]),
+            Paragraph(data["ship_to_location"], self.styles["SmallText"]),
+        ]
+
+        # Invoice metadata
+        metadata_rows = [
+            [
+                Paragraph("<b>Invoice #:</b>", self.styles["SmallText"]),
+                Paragraph(invoice_number, self.styles["SmallText"]),
+            ],
+            [
+                Paragraph("<b>Invoice Date:</b>", self.styles["SmallText"]),
+                Paragraph(invoice_date, self.styles["SmallText"]),
+            ],
+            [
+                Paragraph("<b>Due Date:</b>", self.styles["SmallText"]),
+                Paragraph(due_date, self.styles["SmallText"]),
+            ],
         ]
 
         if data.get("purchase_order"):
-            metadata_data.append(["PO #:", data["purchase_order"]])
-
-        if data.get("period_start") and data.get("period_end"):
-            metadata_data.append(
-                ["Period:", f"{data['period_start']} - {data['period_end']}"]
+            metadata_rows.append(
+                [
+                    Paragraph("<b>PO #:</b>", self.styles["SmallText"]),
+                    Paragraph(data["purchase_order"], self.styles["SmallText"]),
+                ]
             )
 
-        metadata_table = Table(metadata_data, colWidths=[1.2 * inch, 1.8 * inch])
+        if data.get("period_start") and data.get("period_end"):
+            metadata_rows.append(
+                [
+                    Paragraph("<b>Period:</b>", self.styles["SmallText"]),
+                    Paragraph(
+                        f"{data['period_start']} - {data['period_end']}",
+                        self.styles["SmallText"],
+                    ),
+                ]
+            )
+
+        metadata_table = Table(metadata_rows, colWidths=[1 * inch, 1.4 * inch])
         metadata_table.setStyle(
             TableStyle(
                 [
-                    ("ALIGN", (0, 0), (0, -1), "RIGHT"),
+                    ("ALIGN", (0, 0), (0, -1), "LEFT"),
                     ("ALIGN", (1, 0), (1, -1), "LEFT"),
-                    ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, -1), 9),
-                    ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#374151")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ]
             )
         )
 
-        # Bill To and Ship To section
-        bill_to_header = Paragraph("<b>Bill To:</b>", self.styles["SectionHeader"])
-        bill_to_text = Paragraph(
-            f"{data['bill_to_name']}<br/>{data['bill_to_address_line1']}<br/>{data['bill_to_address_line2']}",
-            self.styles["Normal"],
-        )
-
-        ship_to_header = Paragraph("<b>Ship To:</b>", self.styles["SectionHeader"])
-        ship_to_text = Paragraph(data["ship_to_location"], self.styles["Normal"])
-
-        # Combine in table layout
+        # Main details table
         details_data = [
-            [bill_to_header, ship_to_header, metadata_table],
-            [bill_to_text, ship_to_text, ""],
+            [
+                bill_to_content[0],
+                ship_to_content[0],
+                Paragraph("<b>Invoice Details:</b>", self.styles["SectionHeader"]),
+            ],
+            [bill_to_content[1], ship_to_content[1], metadata_table],
         ]
 
         details_table = Table(
-            details_data, colWidths=[2.5 * inch, 1.5 * inch, 2.5 * inch]
+            details_data, colWidths=[2.3 * inch, 2.2 * inch, 2.5 * inch]
         )
         details_table.setStyle(
             TableStyle(
                 [
                     ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                    ("SPAN", (2, 0), (2, 1)),  # Metadata spans both rows
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 12),
                 ]
             )
         )
 
         elements.append(details_table)
 
-        # Remit to email if provided
+        # Remit to
         if data.get("remit_to_email"):
-            elements.append(Spacer(1, 0.1 * inch))
+            elements.append(Spacer(1, 0.15 * inch))
             remit_para = Paragraph(
-                f"<b>Remit To:</b> {data['remit_to_email']}", self.styles["Normal"]
+                f"<b>Remit To:</b> {data['remit_to_email']}", self.styles["SmallText"]
             )
             elements.append(remit_para)
 
         return elements
 
-    def _create_line_items_table(self, labor_total, materials_total):
-        """Create line items table with labor and materials"""
-        # Table data
+    def _create_line_items_table(
+        self, labor_total, materials_total, passthrough_total=0
+    ):
+        """Create TSI-branded line items table"""
+
+        # Build table data
         data = [
-            ["Item", "Description", "Amount"],  # Header
-            ["1.0", "TSI Labor", f"${labor_total:,.2f}"],
-            ["2.0", "Equipment and Materials", f"${materials_total:,.2f}"],
+            [
+                Paragraph("<b>Item</b>", self.styles["TableText"]),
+                Paragraph("<b>Description</b>", self.styles["TableText"]),
+                Paragraph("<b>Amount</b>", self.styles["TableText"]),
+            ],
+            [
+                Paragraph("1.0", self.styles["TableText"]),
+                Paragraph("TSI Labor", self.styles["TableText"]),
+                Paragraph(f"${labor_total:,.2f}", self.styles["TableText"]),
+            ],
+            [
+                Paragraph("2.0", self.styles["TableText"]),
+                Paragraph("TSI Equipment and Materials", self.styles["TableText"]),
+                Paragraph(f"${materials_total:,.2f}", self.styles["TableText"]),
+            ],
         ]
 
-        # Create table
-        table = Table(data, colWidths=[0.8 * inch, 4 * inch, 1.7 * inch])
+        if passthrough_total > 0:
+            data.append(
+                [
+                    Paragraph("3.0", self.styles["TableText"]),
+                    Paragraph("Pass-Through Expenses", self.styles["TableText"]),
+                    Paragraph(f"${passthrough_total:,.2f}", self.styles["TableText"]),
+                ]
+            )
 
-        # Style the table
+        table = Table(data, colWidths=[0.6 * inch, 5 * inch, 1.4 * inch])
+
+        # TSI-branded styling
         table.setStyle(
             TableStyle(
                 [
-                    # Header row
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f3f4f6")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#374151")),
+                    # Header row - TSI brown background
+                    ("BACKGROUND", (0, 0), (-1, 0), self.GRAY_LIGHT),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), self.TSI_DARK_BROWN),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                     ("FONTSIZE", (0, 0), (-1, 0), 10),
-                    ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
-                    ("TOPPADDING", (0, 0), (-1, 0), 8),
+                    ("BOTTOMPADDING", (0, 0), (-1, 0), 10),
+                    ("TOPPADDING", (0, 0), (-1, 0), 10),
                     # Data rows
                     ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
                     ("FONTSIZE", (0, 1), (-1, -1), 10),
-                    ("TOPPADDING", (0, 1), (-1, -1), 6),
-                    ("BOTTOMPADDING", (0, 1), (-1, -1), 6),
+                    ("TOPPADDING", (0, 1), (-1, -1), 12),
+                    ("BOTTOMPADDING", (0, 1), (-1, -1), 12),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 10),
                     # Alignment
-                    ("ALIGN", (0, 0), (0, -1), "LEFT"),  # Item column
-                    ("ALIGN", (1, 0), (1, -1), "LEFT"),  # Description
-                    ("ALIGN", (2, 0), (2, -1), "RIGHT"),  # Amount
-                    # Grid
-                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e5e7eb")),
-                    ("LINEBELOW", (0, 0), (-1, 0), 1, colors.HexColor("#d1d5db")),
+                    ("ALIGN", (0, 0), (0, -1), "CENTER"),
+                    ("ALIGN", (1, 0), (1, -1), "LEFT"),
+                    ("ALIGN", (2, 0), (2, -1), "RIGHT"),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    # Borders - TSI brown
+                    ("LINEBELOW", (0, 0), (-1, 0), 1.5, self.TSI_BROWN),
+                    ("LINEBELOW", (0, 1), (-1, -2), 0.5, colors.HexColor("#e5e7eb")),
+                    ("BOX", (0, 0), (-1, -1), 1, self.TSI_BROWN),
                 ]
             )
         )
@@ -260,20 +457,28 @@ class InvoiceGenerator:
         return table
 
     def _create_total_section(self, grand_total):
-        """Create total section at bottom"""
-        total_data = [["Invoice Total:", f"${grand_total:,.2f}"]]
+        """Create TSI-branded total section"""
 
-        total_table = Table(total_data, colWidths=[5.5 * inch, 1.0 * inch])
+        total_data = [
+            [
+                Paragraph("<b>Invoice Total:</b>", self.styles["Normal"]),
+                Paragraph(f"<b>${grand_total:,.2f}</b>", self.styles["Normal"]),
+            ]
+        ]
+
+        total_table = Table(total_data, colWidths=[5.6 * inch, 1.4 * inch])
         total_table.setStyle(
             TableStyle(
                 [
                     ("ALIGN", (0, 0), (0, 0), "RIGHT"),
                     ("ALIGN", (1, 0), (1, 0), "RIGHT"),
                     ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, -1), 12),
-                    ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#1a56db")),
-                    ("LINEABOVE", (0, 0), (-1, 0), 1.5, colors.HexColor("#1a56db")),
-                    ("TOPPADDING", (0, 0), (-1, -1), 8),
+                    ("FONTSIZE", (0, 0), (-1, -1), 14),
+                    ("TEXTCOLOR", (0, 0), (-1, -1), self.TSI_BROWN),
+                    ("LINEABOVE", (0, 0), (-1, 0), 2, self.TSI_BROWN),
+                    ("TOPPADDING", (0, 0), (-1, -1), 12),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 10),
                 ]
             )
         )
@@ -281,17 +486,33 @@ class InvoiceGenerator:
         return total_table
 
 
-def generate_invoice_pdf(invoice_data, labor_total, materials_total):
+def generate_invoice_pdf(
+    invoice_data,
+    labor_total,
+    materials_total,
+    passthrough_total=0,
+    logo_path=None,
+    save_backup=True,
+):
     """
-    Convenience function to generate invoice PDF
+    Generate TSI-branded invoice PDF with automatic backup
 
     Args:
         invoice_data: Dictionary with all invoice details
         labor_total: Total labor cost (float)
         materials_total: Total materials cost (float)
+        passthrough_total: Total pass-through expenses (float)
+        logo_path: Path to TSI logo file (default: "logo.png")
+        save_backup: If True, saves PDF to invoices/ directory (default: True)
 
     Returns:
         BytesIO buffer containing PDF
     """
-    generator = InvoiceGenerator()
-    return generator.generate_invoice(invoice_data, labor_total, materials_total)
+    generator = TSIInvoiceGenerator(logo_path=logo_path)
+    return generator.generate_invoice(
+        invoice_data,
+        labor_total,
+        materials_total,
+        passthrough_total,
+        save_backup=save_backup,
+    )

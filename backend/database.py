@@ -11,6 +11,8 @@ from sqlalchemy import (
     Date,
     ForeignKey,
     Boolean,
+    Text,
+    TIMESTAMP,
     UniqueConstraint,
     create_engine,
 )
@@ -91,6 +93,14 @@ class DailyEntry(Base):
     labor_entries = relationship(
         "LaborEntry", back_populates="daily_entry", cascade="all, delete-orphan"
     )
+    equipment_rental_items = relationship(
+        "EquipmentRentalEntry",
+        back_populates="daily_entry",
+        cascade="all, delete-orphan",
+    )
+    passthrough_expenses = relationship(
+        "PassThroughExpense", back_populates="daily_entry", cascade="all, delete-orphan"
+    )
 
     def to_dict(self):
         return {
@@ -99,6 +109,12 @@ class DailyEntry(Base):
             "entry_date": str(self.entry_date),
             "line_items": [item.to_dict() for item in self.line_items],
             "labor_entries": [labor.to_dict() for labor in self.labor_entries],
+            "equipment_rental_items": [
+                equip.to_dict() for equip in self.equipment_rental_items
+            ],
+            "passthrough_expenses": [
+                expense.to_dict() for expense in self.passthrough_expenses
+            ],
         }
 
 
@@ -195,6 +211,88 @@ class LaborEntry(Base):
         }
 
 
+class EquipmentRentalEntry(Base):
+    """Equipment rental line item for a daily entry"""
+
+    __tablename__ = "equipment_rental_items"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    daily_entry_id = Column(
+        Integer, ForeignKey("daily_entries.id", ondelete="CASCADE"), nullable=False
+    )
+    equipment_rental_id = Column(
+        Integer, nullable=False
+    )  # References equipment_rental_rates
+    quantity = Column(Numeric(10, 2), nullable=False, default=0)
+    unit_rate = Column(Numeric(10, 2), nullable=False)  # Daily/weekly/monthly rate used
+    equipment_name = Column(String(255), nullable=False)  # Denormalized for reporting
+    equipment_category = Column(
+        String(50), nullable=False
+    )  # Denormalized for reporting
+    unit = Column(String(50), nullable=False)  # Day, Week, Month
+
+    # Relationships
+    daily_entry = relationship("DailyEntry", back_populates="equipment_rental_items")
+
+    @property
+    def total_amount(self):
+        return float(self.quantity) * float(self.unit_rate)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "equipment_rental_id": self.equipment_rental_id,
+            "equipment_name": self.equipment_name,
+            "category": self.equipment_category,
+            "unit": self.unit,
+            "quantity": float(self.quantity),
+            "unit_rate": float(self.unit_rate),
+            "total_amount": self.total_amount,
+        }
+
+
+class PassThroughExpense(Base):
+    """Pass-through expenses - vendor invoices billed directly to client"""
+
+    __tablename__ = "passthrough_expenses"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    daily_entry_id = Column(
+        Integer, ForeignKey("daily_entries.id", ondelete="CASCADE"), nullable=False
+    )
+    vendor_name = Column(String(255), nullable=False)
+    vendor_invoice_number = Column(String(100))
+    description = Column(Text, nullable=False)
+    amount = Column(Numeric(10, 2), nullable=False)
+    invoice_date = Column(Date)
+    category = Column(String(50), nullable=False, default="Equipment Rental")
+    billing_period_start = Column(Date)
+    billing_period_end = Column(Date)
+    notes = Column(Text)
+    created_at = Column(TIMESTAMP)
+
+    # Relationship
+    daily_entry = relationship("DailyEntry", back_populates="passthrough_expenses")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "vendor_name": self.vendor_name,
+            "vendor_invoice_number": self.vendor_invoice_number,
+            "description": self.description,
+            "amount": float(self.amount),
+            "invoice_date": str(self.invoice_date) if self.invoice_date else None,
+            "category": self.category,
+            "billing_period_start": (
+                str(self.billing_period_start) if self.billing_period_start else None
+            ),
+            "billing_period_end": (
+                str(self.billing_period_end) if self.billing_period_end else None
+            ),
+            "notes": self.notes,
+        }
+
+
 # Database setup
 DATABASE_URL = "sqlite+aiosqlite:///./tracktm.db"
 
@@ -208,7 +306,7 @@ def init_db():
     """Initialize database (create all tables)"""
     engine = get_engine()
     Base.metadata.create_all(engine)
-    print("✅ Database initialized successfully!")
+    print("Ã¢Å“â€¦ Database initialized successfully!")
     return engine
 
 
