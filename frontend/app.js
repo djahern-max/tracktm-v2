@@ -6,6 +6,7 @@ let materials = [];
 let laborRoles = [];
 let currentEntry = null;
 let laborRowCounter = 0; // For unique row IDs
+let equipmentRentals = [];
 
 // ============================================
 // HELPER FUNCTIONS - ADD THESE THREE HERE ⬇️
@@ -62,6 +63,7 @@ async function init() {
     // Load materials catalog and labor roles
     await loadMaterials();
     await loadLaborRoles();
+    await loadEquipmentRentals();
 
     // Setup event listeners
     document.getElementById('loadBtn').addEventListener('click', loadEntry);
@@ -71,6 +73,217 @@ async function init() {
     document.getElementById('exportBtn').addEventListener('click', exportJob);
     document.getElementById('exportDetailedBtn').addEventListener('click', exportDetailed);
     document.getElementById('generateInvoiceBtn').addEventListener('click', openInvoiceModal);
+}
+
+async function loadEquipmentRentals() {
+    try {
+        const response = await fetch(`${API_BASE}/equipment-rentals?year=2022`);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        equipmentRentals = data;
+        console.log(`Loaded ${equipmentRentals.length} equipment rental items`);
+    } catch (error) {
+        console.error('Error loading equipment rentals:', error);
+        // Fallback - they might not be available yet
+        equipmentRentals = [];
+    }
+}
+
+// Create equipment rental section (similar to materials)
+function createEquipmentRentalSection(existingRentalItems = []) {
+    const section = document.createElement('div');
+    section.className = 'category-section';
+
+    const header = document.createElement('div');
+    header.className = 'category-header';
+    header.textContent = 'EQUIPMENT RENTALS';
+    section.appendChild(header);
+
+    // Group by category
+    const byCategory = {};
+    equipmentRentals.forEach(rental => {
+        if (!byCategory[rental.category]) {
+            byCategory[rental.category] = [];
+        }
+        byCategory[rental.category].push(rental);
+    });
+
+    // Create table for each category
+    Object.entries(byCategory).forEach(([category, items]) => {
+        const categoryTable = createEquipmentCategoryTable(category, items, existingRentalItems);
+        section.appendChild(categoryTable);
+    });
+
+    return section;
+}
+
+function createEquipmentCategoryTable(category, items, existingRentalItems) {
+    const wrapper = document.createElement('div');
+    wrapper.style.marginBottom = '15px';
+
+    const subHeader = document.createElement('div');
+    subHeader.style.fontWeight = '600';
+    subHeader.style.padding = '8px 0';
+    subHeader.style.color = '#6b7280';
+    subHeader.textContent = category;
+    wrapper.appendChild(subHeader);
+
+    const table = document.createElement('table');
+    table.className = 'materials-table';
+
+    table.innerHTML = `
+        <thead>
+            <tr>
+                <th style="width: 45%">Equipment</th>
+                <th style="width: 10%">Unit</th>
+                <th style="width: 15%">QTY</th>
+                <th style="width: 15%">Daily Rate</th>
+                <th style="width: 15%; text-align: right;">Total</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    `;
+
+    const tbody = table.querySelector('tbody');
+
+    items.forEach(item => {
+        const existingItem = existingRentalItems.find(ri => ri.equipment_rental_id === item.id);
+        const quantity = existingItem ? existingItem.quantity : 0;
+        const unitRate = existingItem ? existingItem.unit_rate : item.daily_rate;
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td class="material-name">${item.name}</td>
+            <td class="material-unit">${item.unit}</td>
+            <td>
+                <input 
+                    type="number" 
+                    class="qty-input equipment-qty-input" 
+                    data-equipment-id="${item.id}"
+                    value="${quantity > 0 ? quantity : ''}"
+                    min="0"
+                    step="0.5"
+                    placeholder="0"
+                />
+            </td>
+            <td>
+                <input 
+                    type="number" 
+                    class="price-input equipment-rate-input" 
+                    data-equipment-id="${item.id}"
+                    value="${unitRate || item.daily_rate}"
+                    min="0"
+                    step="0.01"
+                />
+            </td>
+            <td class="item-total equipment-total" data-equipment-id="${item.id}">
+                $${(quantity * (unitRate || item.daily_rate)).toFixed(2)}
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+
+    wrapper.appendChild(table);
+    return wrapper;
+}
+
+// Update displayForm to include equipment rentals
+function displayFormWithEquipment(existingLineItems = [], existingLaborItems = [], existingEquipmentItems = []) {
+    const container = document.getElementById('formContainer');
+    container.innerHTML = '';
+    laborRowCounter = 0;
+
+    // Materials by category
+    const byCategory = {};
+    materials.forEach(mat => {
+        if (!byCategory[mat.category]) {
+            byCategory[mat.category] = [];
+        }
+        byCategory[mat.category].push(mat);
+    });
+
+    Object.entries(byCategory).forEach(([category, items]) => {
+        const section = createCategorySection(category, items, existingLineItems);
+        container.appendChild(section);
+    });
+
+    // Add Equipment Rentals Section (NEW!)
+    if (equipmentRentals.length > 0) {
+        const equipmentSection = createEquipmentRentalSection(existingEquipmentItems);
+        container.appendChild(equipmentSection);
+    }
+
+    // Labor section
+    const laborSection = createLaborSection(existingLaborItems);
+    container.appendChild(laborSection);
+
+    document.getElementById('actionsBar').style.display = 'flex';
+
+    // Setup listeners for materials
+    setupQuantityListeners();
+
+    // Setup listeners for equipment (NEW!)
+    setupEquipmentListeners();
+
+    // Calculate totals
+    calculateTotal();
+}
+
+// Setup equipment quantity listeners
+function setupEquipmentListeners() {
+    document.querySelectorAll('.equipment-qty-input, .equipment-rate-input').forEach(input => {
+        input.addEventListener('input', (e) => {
+            const equipmentId = e.target.dataset.equipmentId;
+            updateEquipmentTotal(equipmentId);
+            calculateTotal();
+        });
+    });
+}
+
+// Update equipment line total
+function updateEquipmentTotal(equipmentId) {
+    const qtyInput = document.querySelector(`.equipment-qty-input[data-equipment-id="${equipmentId}"]`);
+    const rateInput = document.querySelector(`.equipment-rate-input[data-equipment-id="${equipmentId}"]`);
+    const totalCell = document.querySelector(`.equipment-total[data-equipment-id="${equipmentId}"]`);
+
+    const qty = parseFloat(qtyInput.value) || 0;
+    const rate = parseFloat(rateInput.value) || 0;
+    const total = qty * rate;
+
+    totalCell.textContent = formatCurrency(total);
+}
+
+// Update calculateTotal to include equipment
+function calculateTotalWithEquipment() {
+    let grandTotal = 0;
+
+    // Materials
+    document.querySelectorAll('.qty-input:not(.equipment-qty-input)').forEach(input => {
+        const materialId = input.dataset.materialId;
+        const qty = parseFloat(input.value) || 0;
+        const priceInput = document.querySelector(`.price-input[data-material-id="${materialId}"]`);
+        const price = parseFloat(priceInput.value) || 0;
+        grandTotal += (qty * price);
+    });
+
+    // Equipment Rentals (NEW!)
+    document.querySelectorAll('.equipment-qty-input').forEach(input => {
+        const equipmentId = input.dataset.equipmentId;
+        const qty = parseFloat(input.value) || 0;
+        const rateInput = document.querySelector(`.equipment-rate-input[data-equipment-id="${equipmentId}"]`);
+        const rate = parseFloat(rateInput.value) || 0;
+        grandTotal += (qty * rate);
+    });
+
+    // Labor
+    document.querySelectorAll('.labor-total').forEach(cell => {
+        const total = parseFloat(cell.textContent.replace('$', '').replace(',', '')) || 0;
+        grandTotal += total;
+    });
+
+    document.getElementById('dailyTotal').textContent = formatCurrency(grandTotal);
 }
 
 async function loadLaborRoles() {
@@ -203,6 +416,12 @@ function displayForm(existingLineItems = [], existingLaborItems = []) {
         container.appendChild(section);
     });
 
+    // ADD EQUIPMENT RENTALS SECTION (NEW!)
+    if (equipmentRentals.length > 0) {
+        const equipmentSection = createEquipmentRentalSection([]);
+        container.appendChild(equipmentSection);
+    }
+
     // Add labor section with multiple employee support
     const laborSection = createLaborSection(existingLaborItems);
     container.appendChild(laborSection);
@@ -213,9 +432,10 @@ function displayForm(existingLineItems = [], existingLaborItems = []) {
     // Setup quantity input listeners
     setupQuantityListeners();
 
-    // ============================================
-    // FIX: Force recalculate all labor totals after form loads
-    // ============================================
+    // Setup equipment listeners (NEW!)
+    setupEquipmentListeners();
+
+    // Force recalculate all labor totals after form loads
     laborRoles.forEach(role => {
         const rows = document.querySelectorAll(`.employee-row[data-role-id="${role.id}"]`);
         rows.forEach(row => {
@@ -224,7 +444,7 @@ function displayForm(existingLineItems = [], existingLaborItems = []) {
         });
     });
 
-    // Calculate initial totals (this now includes the labor totals we just calculated)
+    // Calculate initial totals
     calculateTotal();
 }
 
@@ -540,13 +760,22 @@ function updateLineTotal(materialId) {
 function calculateTotal() {
     let grandTotal = 0;
 
-    // Materials
-    document.querySelectorAll('.qty-input').forEach(input => {
+    // Materials (exclude equipment qty inputs)
+    document.querySelectorAll('.qty-input:not(.equipment-qty-input)').forEach(input => {
         const materialId = input.dataset.materialId;
         const qty = parseFloat(input.value) || 0;
         const priceInput = document.querySelector(`.price-input[data-material-id="${materialId}"]`);
         const price = parseFloat(priceInput.value) || 0;
         grandTotal += (qty * price);
+    });
+
+    // Equipment Rentals (NEW!)
+    document.querySelectorAll('.equipment-qty-input').forEach(input => {
+        const equipmentId = input.dataset.equipmentId;
+        const qty = parseFloat(input.value) || 0;
+        const rateInput = document.querySelector(`.equipment-rate-input[data-equipment-id="${equipmentId}"]`);
+        const rate = parseFloat(rateInput.value) || 0;
+        grandTotal += (qty * rate);
     });
 
     // Labor - sum all employee totals
@@ -573,9 +802,9 @@ async function saveEntry() {
     // Save company and job names for this job number
     saveJobInfo(jobNumber, companyName, jobName);
 
-    // Collect line items (only non-zero quantities)
+    // Collect line items (only non-zero quantities) - EXCLUDE EQUIPMENT
     const lineItems = [];
-    document.querySelectorAll('.qty-input').forEach(input => {
+    document.querySelectorAll('.qty-input:not(.equipment-qty-input)').forEach(input => {
         const qty = parseFloat(input.value) || 0;
         if (qty > 0) {
             const materialId = parseInt(input.dataset.materialId);
@@ -586,6 +815,23 @@ async function saveEntry() {
                 material_id: materialId,
                 quantity: qty,
                 unit_price: unitPrice
+            });
+        }
+    });
+
+    // Collect equipment rental items (NEW!)
+    const equipmentItems = [];
+    document.querySelectorAll('.equipment-qty-input').forEach(input => {
+        const qty = parseFloat(input.value) || 0;
+        if (qty > 0) {
+            const equipmentId = parseInt(input.dataset.equipmentId);
+            const rateInput = document.querySelector(`.equipment-rate-input[data-equipment-id="${equipmentId}"]`);
+            const unitRate = parseFloat(rateInput.value);
+
+            equipmentItems.push({
+                equipment_rental_id: equipmentId,
+                quantity: qty,
+                unit_rate: unitRate
             });
         }
     });
@@ -616,8 +862,8 @@ async function saveEntry() {
         }
     });
 
-    if (lineItems.length === 0 && laborItems.length === 0) {
-        alert('Please enter at least one material quantity or labor hours');
+    if (lineItems.length === 0 && laborItems.length === 0 && equipmentItems.length === 0) {
+        alert('Please enter at least one material quantity, equipment, or labor hours');
         return;
     }
 
@@ -625,6 +871,7 @@ async function saveEntry() {
         job_number: jobNumber,
         entry_date: entryDate,
         line_items: lineItems,
+        equipment_items: equipmentItems,  // NEW!
         labor_items: laborItems
     });
 
@@ -637,6 +884,7 @@ async function saveEntry() {
                 job_number: jobNumber,
                 entry_date: entryDate,
                 line_items: lineItems,
+                equipment_items: equipmentItems,  // NEW!
                 labor_items: laborItems
             })
         });
@@ -646,8 +894,10 @@ async function saveEntry() {
 
         if (response.ok) {
             const materialsTotal = data.entry.line_items.reduce((sum, item) => sum + item.total_amount, 0);
+            const equipmentTotal = data.entry.equipment_rental_items ?
+                data.entry.equipment_rental_items.reduce((sum, item) => sum + item.total_amount, 0) : 0;
             const laborTotal = data.entry.labor_entries.reduce((sum, item) => sum + item.total_amount, 0);
-            const grandTotal = materialsTotal + laborTotal;
+            const grandTotal = materialsTotal + equipmentTotal + laborTotal;
             showMessage(`Entry saved successfully! Total: ${formatCurrency(grandTotal)}`, 'success');
             currentEntry = data.entry;
         } else {
@@ -944,7 +1194,7 @@ function generateDetailedCSV(summary, entries, companyName, jobName) {
         byCategory[item.category].push(item);
     });
 
-    const categoryOrder = ['EQUIPMENT', 'MATERIALS', 'PPE', 'CONSUMABLES', 'FUEL'];
+    const categoryOrder = ['EQUIPMENT', 'MATERIALS', 'PPE', 'CONSUMABLES', 'FUEL', 'LODGING'];
 
     lines.push('MATERIALS BREAKDOWN');
     lines.push('=============================================================');
@@ -968,7 +1218,7 @@ function generateDetailedCSV(summary, entries, companyName, jobName) {
         }
     });
 
-    lines.push('MATERIALS TOTAL:,,,,${formatCurrency(materialsGrandTotal)}');
+    lines.push(`MATERIALS TOTAL:,,,,${formatCurrency(materialsGrandTotal)}`);
     lines.push('');
     lines.push('');
 
@@ -1037,7 +1287,7 @@ function generateDetailedCSV(summary, entries, companyName, jobName) {
             lines.push('');
         });
 
-        lines.push('LABOR TOTAL:,,,,${formatCurrency(laborGrandTotal)}');
+        lines.push(`LABOR TOTAL:,,,,${formatCurrency(laborGrandTotal)}`);
         lines.push('');
         lines.push('');
 

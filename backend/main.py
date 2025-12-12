@@ -16,6 +16,8 @@ from fastapi.responses import StreamingResponse
 from typing import Optional
 from invoice_generator import generate_invoice_pdf
 from contextlib import asynccontextmanager
+from sqlalchemy import text
+
 
 from database import (
     get_session,
@@ -116,6 +118,25 @@ class InvoiceRequest(BaseModel):
     end_date: Optional[str] = None
 
 
+# Pydantic Models for Equipment Rentals
+class EquipmentRentalResponse(BaseModel):
+    id: int
+    category: str
+    name: str
+    unit: str
+    daily_rate: Optional[float]
+    weekly_rate: Optional[float]
+    monthly_rate: Optional[float]
+    year: str
+    active: bool
+
+
+class EquipmentRentalInput(BaseModel):
+    equipment_rental_id: int
+    quantity: float
+    rate_period: str = "daily"  # daily, weekly, monthly
+
+
 # Dependency
 def get_db():
     db = get_session()
@@ -143,7 +164,7 @@ def root():
     }
 
 
-CATEGORY_ORDER = ["EQUIPMENT", "MATERIALS", "PPE", "CONSUMABLES", "FUEL"]
+CATEGORY_ORDER = ["EQUIPMENT", "MATERIALS", "PPE", "CONSUMABLES", "FUEL", "LODGING"]
 
 
 @app.get("/api/materials", response_model=List[MaterialResponse])
@@ -475,3 +496,62 @@ def generate_invoice(request: InvoiceRequest, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=500, detail=f"Failed to generate invoice: {str(e)}"
         )
+
+
+@app.get("/api/equipment-rentals", response_model=List[EquipmentRentalResponse])
+def get_equipment_rentals(
+    year: str = "2022",
+    category: Optional[str] = None,
+    active: bool = True,
+    db: Session = Depends(get_db),
+):
+    """Get all equipment rental rates"""
+    query = db.execute(
+        text(
+            """
+        SELECT id, category, name, unit, daily_rate, weekly_rate, monthly_rate, year, active
+        FROM equipment_rental_rates
+        WHERE year = :year AND active = :active
+    """
+        ),
+        {"year": year, "active": 1 if active else 0},
+    )
+
+    rentals = []
+    for row in query:
+        rentals.append(
+            {
+                "id": row[0],
+                "category": row[1],
+                "name": row[2],
+                "unit": row[3],
+                "daily_rate": float(row[4]) if row[4] else None,
+                "weekly_rate": float(row[5]) if row[5] else None,
+                "monthly_rate": float(row[6]) if row[6] else None,
+                "year": row[7],
+                "active": bool(row[8]),
+            }
+        )
+
+    if category:
+        rentals = [r for r in rentals if r["category"] == category]
+
+    return rentals
+
+
+@app.get("/api/equipment-rentals/categories")
+def get_equipment_categories(year: str = "2022", db: Session = Depends(get_db)):
+    """Get list of equipment rental categories"""
+    result = db.execute(
+        text(
+            """
+        SELECT DISTINCT category
+        FROM equipment_rental_rates
+        WHERE year = :year AND active = 1
+        ORDER BY category
+    """
+        ),
+        {"year": year},
+    )
+
+    return {"categories": [row[0] for row in result]}
