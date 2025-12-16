@@ -11,8 +11,6 @@
 <body>
     <div class="container">
         <!-- Header -->
-
-
         <header class="header">
             <h1>Daily Timesheet Entry</h1>
             <div class="header-info">
@@ -32,241 +30,28 @@
                     <label>Date:</label>
                     <input type="date" id="entryDate" />
                 </div>
-
-                <!-- ADD THESE TWO NEW FIELDS FOR DATE RANGE FILTERING -->
-                <div class="info-group">
-                    <label>Period Start (optional):</label>
-                    <input type="date" id="periodStart" placeholder="For invoices/exports" />
-                </div>
-                <div class="info-group">
-                    <label>Period End (optional):</label>
-                    <input type="date" id="periodEnd" placeholder="For invoices/exports" />
-                </div>
-
                 <button id="loadBtn" class="btn btn-secondary">Load Entry</button>
                 <button id="newBtn" class="btn btn-secondary">New Entry</button>
             </div>
         </header>
-
-        <!-- 
-EXPLANATION:
-- "Date" field is for loading/creating daily entries (existing)
-- "Period Start/End" fields are for invoice and export filtering (NEW)
-- Leave Period fields blank = all dates
-- Set Period fields = filter by that range
--->
 
         <!-- Form Container -->
         <div class="form-container" id="formContainer">
             <p class="instruction">Select a date and click "Load Entry" or "New Entry" to begin</p>
         </div>
 
-        <!-- Labor Section -->
-        <div class="form-container" id="laborContainer" style="display: none; margin-top: 20px;">
-            <div style="border-left: 4px solid #1a56db; padding-left: 15px; margin-bottom: 20px;">
-                <h2 style="font-size: 1.1rem; font-weight: 700; color: #111827;">LABOR</h2>
-            </div>
-
-            <table class="materials-table">
-                <thead>
-                    <tr>
-                        <th style="width: 15%">Role</th>
-                        <th style="width: 20%">Employee</th>
-                        <th style="width: 12%">Reg Hrs</th>
-                        <th style="width: 12%">OT Hrs</th>
-                        <th style="width: 8%" class="labor-checkbox-cell">Night</th>
-                        <th style="width: 13%">Reg Rate</th>
-                        <th style="width: 20%; text-align: right;">Total</th>
-                    </tr>
-                </thead>
-                <tbody id="laborTableBody">
-                    <tr>
-                        <td class="material-name">Painter</td>
-                        <td><input type="text" class="labor-input" placeholder="Name" style="text-align: left;" /></td>
-                        <td><input type="number" class="labor-input" min="0" step="0.5" placeholder="0" /></td>
-                        <td><input type="number" class="labor-input" min="0" step="0.5" placeholder="0" /></td>
-                        <td class="labor-checkbox-cell"><input type="checkbox" /></td>
-                        <td><input type="number" class="labor-input" value="139.41" step="0.01"
-                                style="text-align: right;" /></td>
-                        <td class="item-total">$0.00</td>
-                    </tr>
-                    <tr>
-                        <td class="material-name">Per Diem</td>
-                        <td><input type="text" class="labor-input" placeholder="Name" style="text-align: left;" /></td>
-                        <td><input type="number" class="labor-input" min="0" step="0.5" placeholder="0" /></td>
-                        <td><input type="number" class="labor-input" min="0" step="0.5" placeholder="0" /></td>
-                        <td class="labor-checkbox-cell"><input type="checkbox" /></td>
-                        <td><input type="number" class="labor-input" value="75.00" step="0.01"
-                                style="text-align: right;" /></td>
-                        <td class="item-total">$0.00</td>
-                    </tr>
-                    <tr>
-                        <td class="material-name">Project Manager</td>
-                        <td><input type="text" class="labor-input" placeholder="Name" style="text-align: left;" /></td>
-                        <td><input type="number" class="labor-input" min="0" step="0.5" placeholder="0" /></td>
-                        <td><input type="number" class="labor-input" min="0" step="0.5" placeholder="0" /></td>
-                        <td class="labor-checkbox-cell"><input type="checkbox" /></td>
-                        <td><input type="number" class="labor-input" value="155.00" step="0.01"
-                                style="text-align: right;" /></td>
-                        <td class="item-total">$0.00</td>
-                    </tr>
-                    <tr>
-                        <td class="material-name">Supervisor</td>
-                        <td><input type="text" class="labor-input" placeholder="Name" style="text-align: left;" /></td>
-                        <td><input type="number" class="labor-input" min="0" step="0.5" placeholder="0" /></td>
-                        <td><input type="number" class="labor-input" min="0" step="0.5" placeholder="0" /></td>
-                        <td class="labor-checkbox-cell"><input type="checkbox" /></td>
-                        <td><input type="number" class="labor-input" value="141.41" step="0.01"
-                                style="text-align: right;" /></td>
-                        <td class="item-total">$0.00</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-
         <!-- Actions -->
         <div class="actions-bar" id="actionsBar" style="display: none;">
-            <button id="saveBtn" class="btn btn-primary">ðŸ’¾ Save Entry</button>
-            <button id="exportCurrentDayBtn" class="btn btn-secondary">ðŸ“„ Export This Day</button>
-            <button id="exportBtn" class="btn btn-success">ðŸ“Š Export Summary</button>
-            <button id="exportDetailedBtn" class="btn btn-success">ðŸ“‹ Export Detailed</button>
-            <button id="generateInvoiceBtn" class="btn btn-success">ðŸ“„ Generate Invoice</button>
+            <button id="saveBtn" class="btn btn-primary">Save Entry</button>
+            <button id="generatePdfBtn" class="btn btn-success">📄 Generate PDF</button>
             <div class="total-display">
                 <span>Daily Total:</span>
                 <strong id="dailyTotal">$0.00</strong>
             </div>
         </div>
+    </div>
 
-        <!-- Add this modal dialog to your index.html, right before the closing </body> tag -->
-
-        <!-- Invoice Generation Modal -->
-        <div id="invoiceModal" class="modal" style="display: none;">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h2>Generate Invoice</h2>
-                    <span class="close-modal">&times;</span>
-                </div>
-
-                <form id="invoiceForm">
-                    <!-- Invoice Info -->
-                    <div class="form-section">
-                        <h3>Invoice Information</h3>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Job Number *</label>
-                                <input type="text" id="inv_job_number" required readonly />
-                            </div>
-                            <div class="form-group">
-                                <label>Job Name *</label>
-                                <input type="text" id="inv_job_name" required />
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Purchase Order #</label>
-                                <input type="text" id="inv_purchase_order" />
-                            </div>
-                            <div class="form-group">
-                                <label>Payment Terms (Days)</label>
-                                <input type="number" id="inv_payment_terms" value="30" />
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Remit To Email</label>
-                                <input type="email" id="inv_remit_email" />
-                            </div>
-                            <div class="form-group">
-                                <label>Ship To Location *</label>
-                                <input type="text" id="inv_ship_to" required />
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Company Info (Your Company) -->
-                    <div class="form-section">
-                        <h3>From (Your Company)</h3>
-                        <div class="form-row">
-                            <div class="form-group full-width">
-                                <label>Company Name *</label>
-                                <input type="text" id="inv_company_name" value="Tri-State Painting, LLC (TSI)"
-                                    required />
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group full-width">
-                                <label>Address Line 1 *</label>
-                                <input type="text" id="inv_company_address1" value="612 West Main Street Unit 2"
-                                    required />
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group full-width">
-                                <label>Address Line 2 *</label>
-                                <input type="text" id="inv_company_address2" value="Tilton, NH 03276" required />
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Phone *</label>
-                                <input type="tel" id="inv_company_phone" value="(603) 286-7657" required />
-                            </div>
-                            <div class="form-group">
-                                <label>Fax</label>
-                                <input type="tel" id="inv_company_fax" value="(603) 286-7882" />
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Bill To Info (Client) -->
-                    <div class="form-section">
-                        <h3>Bill To (Client)</h3>
-                        <div class="form-row">
-                            <div class="form-group full-width">
-                                <label>Company Name *</label>
-                                <input type="text" id="inv_billto_name" required />
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group full-width">
-                                <label>Address Line 1 *</label>
-                                <input type="text" id="inv_billto_address1" required />
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group full-width">
-                                <label>Address Line 2 *</label>
-                                <input type="text" id="inv_billto_address2" required />
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Date Range (Optional) -->
-                    <div class="form-section">
-                        <h3>Date Range (Optional - leave blank for all entries)</h3>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Start Date</label>
-                                <input type="date" id="inv_start_date" />
-                            </div>
-                            <div class="form-group">
-                                <label>End Date</label>
-                                <input type="date" id="inv_end_date" />
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Actions -->
-                    <div class="modal-actions">
-                        <button type="button" class="btn btn-secondary">Cancel</button>
-                        <button type="submit" class="btn btn-primary">Generate Invoice</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <script src="app.js"></script>
-        <script src="invoice.js"></script>
+    <script src="app.js"></script>
 </body>
 
 </html>

@@ -143,12 +143,21 @@ class EntryLineItem(Base):
         return float(self.quantity) * float(self.unit_price)
 
     def to_dict(self):
+        # Handle case where material might have been deleted
+        material_name = (
+            self.material.name
+            if self.material
+            else f"[Deleted Material ID {self.material_id}]"
+        )
+        category = self.material.category if self.material else "UNKNOWN"
+        unit = self.material.unit if self.material else "Unknown"
+
         return {
             "id": self.id,
             "material_id": self.material_id,
-            "material_name": self.material.name,
-            "category": self.material.category,
-            "unit": self.material.unit,
+            "material_name": material_name,
+            "category": category,
+            "unit": unit,
             "quantity": float(self.quantity),
             "unit_price": float(self.unit_price),
             "total_amount": self.total_amount,
@@ -306,7 +315,7 @@ def init_db():
     """Initialize database (create all tables)"""
     engine = get_engine()
     Base.metadata.create_all(engine)
-    print("Ã¢Å“â€¦ Database initialized successfully!")
+    print("ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Database initialized successfully!")
     return engine
 
 

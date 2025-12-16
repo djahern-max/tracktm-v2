@@ -203,12 +203,93 @@ function initInvoiceModule() {
         }
     });
 
-    console.log('✓ Invoice module initialized');
+    console.log('âœ“ Invoice module initialized');
 }
 
 // Export functions for use in app.js
 window.InvoiceModule = {
     open: openInvoiceModal,
     close: closeInvoiceModal,
-    init: initInvoiceModule
+    init: initInvoiceModule,
+    generateReport: generateDetailedReport
 };
+
+// Generate detailed PDF report
+async function generateDetailedReport() {
+    const jobNumber = document.getElementById('jobNumber').value;
+    const jobName = document.getElementById('jobName').value;
+
+    if (!jobNumber) {
+        alert('Please enter job number');
+        return;
+    }
+
+    // Load saved settings
+    const settings = loadInvoiceSettings();
+
+    // Get date range from header (if set)
+    const startDate = document.getElementById('periodStart')?.value || null;
+    const endDate = document.getElementById('periodEnd')?.value || null;
+
+    // Prepare request data (same format as invoice)
+    const formData = {
+        job_number: jobNumber,
+        job_name: jobName || `Job ${jobNumber}`,
+        purchase_order: '',
+        payment_terms_days: 30,
+        remit_to_email: settings.remit_email,
+        ship_to_location: settings.ship_to,
+        company_name: settings.company_name,
+        company_address_line1: settings.company_address1,
+        company_address_line2: settings.company_address2,
+        company_phone: settings.company_phone,
+        company_fax: settings.company_fax,
+        bill_to_name: settings.billto_name,
+        bill_to_address_line1: settings.billto_address1,
+        bill_to_address_line2: settings.billto_address2,
+        start_date: startDate,
+        end_date: endDate
+    };
+
+    try {
+        // Show loading message
+        if (typeof showMessage === 'function') {
+            showMessage('Generating detailed report...', 'info');
+        }
+
+        const response = await fetch(`${API_BASE}/reports/detailed`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData)
+        });
+
+        if (response.ok) {
+            // Download the PDF
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+
+            // Generate filename
+            const today = new Date();
+            const dateStr = today.toISOString().split('T')[0];
+            a.download = `Report_${jobNumber}_${dateStr}.pdf`;
+
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+
+            // Show success message
+            if (typeof showMessage === 'function') {
+                showMessage('Detailed report generated successfully!', 'success');
+            }
+        } else {
+            const error = await response.json();
+            throw new Error(error.detail || 'Unknown error');
+        }
+    } catch (error) {
+        console.error('Error generating report:', error);
+        alert('Failed to generate report: ' + error.message);
+    }
+}
