@@ -1,5 +1,6 @@
 // TrackTM - Simplified Daily Timesheet Entry Application
 const API_BASE = 'http://localhost:8000/api';
+window.API_BASE = API_BASE; // Make it globally accessible for invoice.js
 
 let materials = [];
 let laborRoles = [];
@@ -175,7 +176,7 @@ function createSearchBar() {
         <input 
             type="text" 
             id="itemSearch" 
-            placeholder="🔍 Search materials, equipment, or labor..." 
+            placeholder="ðŸ” Search materials, equipment, or labor..." 
             class="search-input"
         />
         <button id="clearSearch" class="btn-clear-search">Clear</button>
@@ -465,7 +466,7 @@ function createEmployeeRow(role, employeeData = {}) {
             <span>Night</span>
         </label>
         <div class="labor-total" data-row-id="${rowId}">$0.00</div>
-        <button class="btn-remove-employee" data-row-id="${rowId}">×</button>
+        <button class="btn-remove-employee" data-row-id="${rowId}">Ã—</button>
     `;
 
     const regInput = row.querySelector('.labor-reg-input');
@@ -707,7 +708,7 @@ function calculateTotal() {
         // Remove $, commas, and any other non-numeric characters except decimal point
         const cleanText = totalText.replace(/[$,]/g, '');
         const total = parseFloat(cleanText) || 0;
-        console.log('Labor total found:', totalText, '→ parsed as:', total);
+        console.log('Labor total found:', totalText, 'â†’ parsed as:', total);
         grandTotal += total;
     });
 

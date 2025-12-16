@@ -1,41 +1,38 @@
 // Invoice Generation Module
 // Handles invoice modal, form validation, and PDF generation
-// Note: Uses API_BASE from app.js (must be loaded after app.js)
+
+// Use API_BASE from app.js (no declaration needed - it's already on window)
+// Just access window.API_BASE directly throughout this file
+
+// Immediately export module to window object FIRST
+window.InvoiceModule = window.InvoiceModule || {};
 
 // Load saved invoice settings from localStorage
 function loadInvoiceSettings() {
     return {
-        company_name: localStorage.getItem('inv_company_name') || 'Tri-State Painting, LLC (TSI)',
-        company_address1: localStorage.getItem('inv_company_address1') || '612 West Main Street Unit 2',
-        company_address2: localStorage.getItem('inv_company_address2') || 'Tilton, NH 03276',
-        company_phone: localStorage.getItem('inv_company_phone') || '(603) 286-7657',
-        company_fax: localStorage.getItem('inv_company_fax') || '(603) 286-7882',
+        ship_to: localStorage.getItem('inv_ship_to') || 'Newport, RI',
         billto_name: localStorage.getItem('inv_billto_name') || 'Reagan Marine Construction LLC',
         billto_address1: localStorage.getItem('inv_billto_address1') || '221 Third St, 5th Floor Suite 513',
         billto_address2: localStorage.getItem('inv_billto_address2') || 'Newport, RI 02840',
-        remit_email: localStorage.getItem('inv_remit_email') || 'AP@reaganmarine.com',
-        ship_to: localStorage.getItem('inv_ship_to') || 'Newport, RI',
-        payment_terms: localStorage.getItem('inv_payment_terms') || '30'
+        contract_number: localStorage.getItem('inv_contract_number') || '',
+        payment_terms: localStorage.getItem('inv_payment_terms') || '30',
+        aggregation_method: localStorage.getItem('inv_aggregation_method') || 'category'
     };
 }
 
 // Save invoice settings to localStorage
 function saveInvoiceSettings(data) {
-    localStorage.setItem('inv_company_name', data.company_name);
-    localStorage.setItem('inv_company_address1', data.company_address1);
-    localStorage.setItem('inv_company_address2', data.company_address2);
-    localStorage.setItem('inv_company_phone', data.company_phone);
-    localStorage.setItem('inv_company_fax', data.company_fax);
+    localStorage.setItem('inv_ship_to', data.ship_to);
     localStorage.setItem('inv_billto_name', data.billto_name);
     localStorage.setItem('inv_billto_address1', data.billto_address1);
     localStorage.setItem('inv_billto_address2', data.billto_address2);
-    localStorage.setItem('inv_remit_email', data.remit_email);
-    localStorage.setItem('inv_ship_to', data.ship_to);
+    localStorage.setItem('inv_contract_number', data.contract_number);
     localStorage.setItem('inv_payment_terms', data.payment_terms);
+    localStorage.setItem('inv_aggregation_method', data.aggregation_method);
 }
 
 // Open invoice modal and populate with saved/current values
-function openInvoiceModal() {
+async function openInvoiceModal() {
     const jobNumber = document.getElementById('jobNumber').value;
     const jobName = document.getElementById('jobName').value;
 
@@ -47,33 +44,45 @@ function openInvoiceModal() {
     // Load saved settings
     const settings = loadInvoiceSettings();
 
-    // Get date range from header (if set)
-    const startDate = document.getElementById('periodStart')?.value || '';
-    const endDate = document.getElementById('periodEnd')?.value || '';
+    // Try to fetch job-specific defaults from API
+    let jobDefaults = {};
+    try {
+        const response = await fetch(`${window.API_BASE}/job-invoice-defaults/${jobNumber}`);
+        if (response.ok) {
+            const data = await response.json();
+            jobDefaults = data.defaults || {};
+        }
+    } catch (error) {
+        console.log('No job-specific defaults found, using saved settings');
+    }
 
-    // Populate form
+    // Populate form - priority: job defaults > saved settings > empty
     document.getElementById('inv_job_number').value = jobNumber;
-    document.getElementById('inv_job_name').value = jobName || `Job ${jobNumber}`;
+    document.getElementById('inv_job_name').value = jobDefaults.job_name || jobName || `Job ${jobNumber}`;
+    document.getElementById('inv_invoice_number').value = '';
     document.getElementById('inv_purchase_order').value = '';
     document.getElementById('inv_payment_terms').value = settings.payment_terms;
-    document.getElementById('inv_remit_email').value = settings.remit_email;
-    document.getElementById('inv_ship_to').value = settings.ship_to;
+    document.getElementById('inv_aggregation_method').value = settings.aggregation_method;
 
-    // Company info (your company)
-    document.getElementById('inv_company_name').value = settings.company_name;
-    document.getElementById('inv_company_address1').value = settings.company_address1;
-    document.getElementById('inv_company_address2').value = settings.company_address2;
-    document.getElementById('inv_company_phone').value = settings.company_phone;
-    document.getElementById('inv_company_fax').value = settings.company_fax;
+    // Ship to and contract - use job defaults if available
+    document.getElementById('inv_ship_to').value = jobDefaults.ship_to_location || settings.ship_to;
+    document.getElementById('inv_contract_number').value = jobDefaults.contract_number || settings.contract_number;
 
-    // Bill to info (client)
-    document.getElementById('inv_billto_name').value = settings.billto_name;
-    document.getElementById('inv_billto_address1').value = settings.billto_address1;
-    document.getElementById('inv_billto_address2').value = settings.billto_address2;
+    // Company info (Remit To) - Always TSI defaults
+    document.getElementById('inv_company_name').value = 'Tri-State Painting, LLC (TSI)';
+    document.getElementById('inv_company_address1').value = '612 West Main Street Unit 2';
+    document.getElementById('inv_company_address2').value = 'Tilton, NH 03276';
+    document.getElementById('inv_company_phone').value = '(603) 286-7657';
+    document.getElementById('inv_company_fax').value = '(603) 286-7882';
 
-    // PRE-FILL date range from header fields (if set)
-    document.getElementById('inv_start_date').value = startDate;
-    document.getElementById('inv_end_date').value = endDate;
+    // Bill to info - use job defaults if available, otherwise saved settings
+    document.getElementById('inv_billto_name').value = jobDefaults.bill_to_name || settings.billto_name;
+    document.getElementById('inv_billto_address1').value = jobDefaults.bill_to_address1 || settings.billto_address1;
+    document.getElementById('inv_billto_address2').value = jobDefaults.bill_to_address2 || settings.billto_address2;
+
+    // Clear date fields (user should set these)
+    document.getElementById('inv_start_date').value = '';
+    document.getElementById('inv_end_date').value = '';
 
     // Show modal
     const modal = document.getElementById('invoiceModal');
@@ -98,35 +107,33 @@ async function handleInvoiceSubmit(e) {
     const formData = {
         job_number: document.getElementById('inv_job_number').value,
         job_name: document.getElementById('inv_job_name').value,
-        purchase_order: document.getElementById('inv_purchase_order').value,
+        invoice_number: document.getElementById('inv_invoice_number').value,
+        purchase_order: document.getElementById('inv_purchase_order').value || null,
         payment_terms_days: parseInt(document.getElementById('inv_payment_terms').value),
-        remit_to_email: document.getElementById('inv_remit_email').value,
         ship_to_location: document.getElementById('inv_ship_to').value,
+        contract_number: document.getElementById('inv_contract_number').value || null,
         company_name: document.getElementById('inv_company_name').value,
         company_address_line1: document.getElementById('inv_company_address1').value,
         company_address_line2: document.getElementById('inv_company_address2').value,
         company_phone: document.getElementById('inv_company_phone').value,
-        company_fax: document.getElementById('inv_company_fax').value,
+        company_fax: document.getElementById('inv_company_fax').value || null,
         bill_to_name: document.getElementById('inv_billto_name').value,
         bill_to_address_line1: document.getElementById('inv_billto_address1').value,
         bill_to_address_line2: document.getElementById('inv_billto_address2').value,
         start_date: document.getElementById('inv_start_date').value || null,
-        end_date: document.getElementById('inv_end_date').value || null
+        end_date: document.getElementById('inv_end_date').value || null,
+        aggregation_method: document.getElementById('inv_aggregation_method').value
     };
 
     // Save settings for next time
     saveInvoiceSettings({
-        company_name: formData.company_name,
-        company_address1: formData.company_address_line1,
-        company_address2: formData.company_address_line2,
-        company_phone: formData.company_phone,
-        company_fax: formData.company_fax,
+        ship_to: formData.ship_to_location,
         billto_name: formData.bill_to_name,
         billto_address1: formData.bill_to_address_line1,
         billto_address2: formData.bill_to_address_line2,
-        remit_email: formData.remit_to_email,
-        ship_to: formData.ship_to_location,
-        payment_terms: formData.payment_terms_days.toString()
+        contract_number: formData.contract_number || '',
+        payment_terms: formData.payment_terms_days.toString(),
+        aggregation_method: formData.aggregation_method
     });
 
     // Show loading state
@@ -134,7 +141,7 @@ async function handleInvoiceSubmit(e) {
     modalContent.classList.add('loading');
 
     try {
-        const response = await fetch(`${API_BASE}/invoice/generate`, {
+        const response = await fetch(`${window.API_BASE}/invoice/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(formData)
@@ -148,9 +155,7 @@ async function handleInvoiceSubmit(e) {
             a.href = url;
 
             // Generate filename
-            const today = new Date();
-            const dateStr = today.toISOString().split('T')[0];
-            a.download = `Invoice_${formData.job_number}_${dateStr}.pdf`;
+            a.download = `Invoice_${formData.invoice_number}_${formData.job_number}.pdf`;
 
             document.body.appendChild(a);
             a.click();
@@ -185,6 +190,12 @@ function initInvoiceModule() {
         invoiceForm.addEventListener('submit', handleInvoiceSubmit);
     }
 
+    // Setup invoice button
+    const invoiceBtn = document.getElementById('generateInvoiceBtn');
+    if (invoiceBtn) {
+        invoiceBtn.addEventListener('click', openInvoiceModal);
+    }
+
     // Close modal when clicking outside
     window.addEventListener('click', function (event) {
         const modal = document.getElementById('invoiceModal');
@@ -197,7 +208,7 @@ function initInvoiceModule() {
     window.addEventListener('keydown', function (event) {
         if (event.key === 'Escape') {
             const modal = document.getElementById('invoiceModal');
-            if (modal.classList.contains('show')) {
+            if (modal && modal.classList.contains('show')) {
                 closeInvoiceModal();
             }
         }
@@ -206,90 +217,23 @@ function initInvoiceModule() {
     console.log('âœ“ Invoice module initialized');
 }
 
-// Export functions for use in app.js
+// Export module functions to window for external access
 window.InvoiceModule = {
-    open: openInvoiceModal,
-    close: closeInvoiceModal,
     init: initInvoiceModule,
-    generateReport: generateDetailedReport
+    open: openInvoiceModal,
+    close: closeInvoiceModal
 };
 
-// Generate detailed PDF report
-async function generateDetailedReport() {
-    const jobNumber = document.getElementById('jobNumber').value;
-    const jobName = document.getElementById('jobName').value;
+// Verify export
+console.log('📦 InvoiceModule exported:', {
+    hasInit: typeof window.InvoiceModule.init === 'function',
+    hasOpen: typeof window.InvoiceModule.open === 'function',
+    hasClose: typeof window.InvoiceModule.close === 'function'
+});
 
-    if (!jobNumber) {
-        alert('Please enter job number');
-        return;
-    }
-
-    // Load saved settings
-    const settings = loadInvoiceSettings();
-
-    // Get date range from header (if set)
-    const startDate = document.getElementById('periodStart')?.value || null;
-    const endDate = document.getElementById('periodEnd')?.value || null;
-
-    // Prepare request data (same format as invoice)
-    const formData = {
-        job_number: jobNumber,
-        job_name: jobName || `Job ${jobNumber}`,
-        purchase_order: '',
-        payment_terms_days: 30,
-        remit_to_email: settings.remit_email,
-        ship_to_location: settings.ship_to,
-        company_name: settings.company_name,
-        company_address_line1: settings.company_address1,
-        company_address_line2: settings.company_address2,
-        company_phone: settings.company_phone,
-        company_fax: settings.company_fax,
-        bill_to_name: settings.billto_name,
-        bill_to_address_line1: settings.billto_address1,
-        bill_to_address_line2: settings.billto_address2,
-        start_date: startDate,
-        end_date: endDate
-    };
-
-    try {
-        // Show loading message
-        if (typeof showMessage === 'function') {
-            showMessage('Generating detailed report...', 'info');
-        }
-
-        const response = await fetch(`${API_BASE}/reports/detailed`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(formData)
-        });
-
-        if (response.ok) {
-            // Download the PDF
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-
-            // Generate filename
-            const today = new Date();
-            const dateStr = today.toISOString().split('T')[0];
-            a.download = `Report_${jobNumber}_${dateStr}.pdf`;
-
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-
-            // Show success message
-            if (typeof showMessage === 'function') {
-                showMessage('Detailed report generated successfully!', 'success');
-            }
-        } else {
-            const error = await response.json();
-            throw new Error(error.detail || 'Unknown error');
-        }
-    } catch (error) {
-        console.error('Error generating report:', error);
-        alert('Failed to generate report: ' + error.message);
-    }
+// Auto-initialize when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initInvoiceModule);
+} else {
+    initInvoiceModule();
 }

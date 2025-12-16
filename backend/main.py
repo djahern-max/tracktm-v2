@@ -5,10 +5,10 @@ Single PDF output with markup logic
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from decimal import Decimal
 from contextlib import asynccontextmanager
@@ -26,13 +26,14 @@ from database import (
 )
 
 from simplified_report_generator import generate_daily_report_pdf
+from invoice_generator import generate_invoice_pdf
 
 
 # Initialize database on startup
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    print("✓ Database initialized")
+    print("Ã¢Å“â€œ Database initialized")
     yield
 
 
@@ -122,6 +123,28 @@ class ReportRequest(BaseModel):
     start_date: Optional[str] = None
 
 
+class InvoiceRequest(BaseModel):
+    job_number: str
+    job_name: str
+    invoice_number: Optional[str] = None  # Added - frontend sends this
+    purchase_order: Optional[str] = None
+    payment_terms_days: int = 30
+    remit_to_email: Optional[str] = None
+    ship_to_location: str
+    company_name: str = "Tri-State Painting, LLC (TSI)"
+    company_address_line1: str = "612 West Main Street Unit 2"
+    company_address_line2: str = "Tilton, NH 03276"
+    company_phone: str = "(603) 286-7657"
+    company_fax: str = "(603) 286-7882"
+    bill_to_name: str
+    bill_to_address_line1: str
+    bill_to_address_line2: str
+    contract_number: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    aggregation_method: Optional[str] = "category"  # Added - frontend sends this
+
+
 # ============================================
 # DATABASE DEPENDENCY
 # ============================================
@@ -142,6 +165,45 @@ def get_db():
 
 @app.get("/")
 def root():
+    """Serve the main application HTML"""
+    return FileResponse("index.html")
+
+
+@app.get("/test")
+def test_page():
+    """Serve the invoice module test page"""
+    return FileResponse("test_invoice_module.html")
+
+
+@app.get("/debug")
+def debug_page():
+    """Serve the invoice debug page"""
+    return FileResponse("invoice_debug.html")
+
+
+# Serve static files directly
+@app.get("/app.js")
+def serve_app_js():
+    return FileResponse("app.js", media_type="application/javascript")
+
+
+@app.get("/invoice.js")
+def serve_invoice_js():
+    return FileResponse("invoice.js", media_type="application/javascript")
+
+
+@app.get("/styles.css")
+def serve_styles_css():
+    return FileResponse("styles.css", media_type="text/css")
+
+
+@app.get("/logo.png")
+def serve_logo():
+    return FileResponse("logo.png", media_type="image/png")
+
+
+@app.get("/api/")
+def api_root():
     return {
         "app": "TrackTM - Simplified",
         "version": "1.0.0",
@@ -437,3 +499,219 @@ def generate_daily_report(request: ReportRequest, db: Session = Depends(get_db))
         raise HTTPException(
             status_code=500, detail=f"Failed to generate report: {str(e)}"
         )
+
+
+@app.get("/api/job-invoice-defaults/{job_number}")
+def get_job_invoice_defaults(job_number: str):
+    """Get default invoice settings for a job number"""
+    from job_invoice_defaults import get_job_defaults
+
+    defaults = get_job_defaults(job_number)
+    return {"defaults": defaults}
+
+
+@app.post("/api/invoice/generate")
+def generate_invoice(request: InvoiceRequest, db: Session = Depends(get_db)):
+    """Generate invoice PDF by aggregating multiple daily entries"""
+
+    try:
+        job_number = request.job_number
+        start_date = request.start_date
+        end_date = request.end_date
+
+        # Build query for date range
+        query = db.query(DailyEntry).filter(DailyEntry.job_number == job_number)
+
+        if start_date:
+            query = query.filter(DailyEntry.entry_date >= start_date)
+        if end_date:
+            query = query.filter(DailyEntry.entry_date <= end_date)
+
+        entries = query.order_by(DailyEntry.entry_date).all()
+
+        if not entries:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No entries found for job {job_number}"
+                + (f" between {start_date} and {end_date}" if start_date else ""),
+            )
+
+        # Aggregate entries - use category method (Materials, Labor, Equipment)
+        line_items = _aggregate_by_category(entries)
+
+        # Calculate period display
+        period = ""
+        if start_date and end_date:
+            start_obj = datetime.strptime(start_date, "%Y-%m-%d")
+            end_obj = datetime.strptime(end_date, "%Y-%m-%d")
+            period = (
+                f"{start_obj.strftime('%m/%d/%y')} - {end_obj.strftime('%m/%d/%y')}"
+            )
+        elif start_date:
+            period = datetime.strptime(start_date, "%Y-%m-%d").strftime("%m/%d/%y")
+
+        # Calculate due date
+        invoice_date = datetime.now()
+        due_date = invoice_date + timedelta(days=request.payment_terms_days)
+
+        # Use provided invoice number or generate one
+        invoice_num = (
+            request.invoice_number
+            if request.invoice_number
+            else f"{job_number}-{invoice_date.strftime('%Y%m%d')}"
+        )
+
+        # Prepare invoice data
+        invoice_data = {
+            "invoice_number": invoice_num,
+            "job_number": job_number,
+            "job_name": request.job_name,
+            "invoice_date": invoice_date.strftime("%m/%d/%y"),
+            "due_date": due_date.strftime("%m/%d/%y"),
+            "purchase_order": request.purchase_order or "",
+            "period": period,
+            "terms": f"Net {request.payment_terms_days}",
+            "company_name": request.company_name,
+            "company_phone": request.company_phone,
+            "company_fax": request.company_fax,
+            "bill_to_name": request.bill_to_name,
+            "bill_to_address_line1": request.bill_to_address_line1,
+            "bill_to_address_line2": request.bill_to_address_line2,
+            "ship_to_location": request.ship_to_location,
+            "contract_number": request.contract_number or "",
+        }
+
+        # Generate PDF
+        pdf_buffer = generate_invoice_pdf(invoice_data, line_items, save_backup=True)
+
+        # Generate filename
+        filename = f"Invoice_{invoice_num}_{job_number}.pdf"
+
+        # Return PDF
+        return StreamingResponse(
+            iter([pdf_buffer.getvalue()]),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error generating invoice: {e}")
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500, detail=f"Failed to generate invoice: {str(e)}"
+        )
+
+
+def _aggregate_by_category(entries):
+    """Aggregate all items by category (Materials, Labor, Equipment)"""
+    line_items = []
+
+    # Aggregate materials
+    materials_base = 0.0
+    materials_base_no_markup = 0.0
+
+    for entry in entries:
+        for item in entry.line_items:
+            # Check for dehumidifier rental
+            if (
+                "dehumidifier" in item.material.name.lower()
+                and "rental" in item.material.name.lower()
+            ):
+                materials_base_no_markup += item.total_amount
+            else:
+                materials_base += item.total_amount
+
+    if materials_base > 0 or materials_base_no_markup > 0:
+        # Apply markup: base + 10% OH + 10% profit
+        materials_oh = materials_base * 0.10
+        materials_profit = materials_base * 0.10
+        materials_total_with_markup = (
+            materials_base + materials_oh + materials_profit + materials_base_no_markup
+        )
+
+        line_items.append(
+            {
+                "billing_item": "Lump Sum",
+                "description": "Materials - T&M Work Performed (with 10% OH + 10% Profit)",
+                "quantity": 1,
+                "unit_price": materials_total_with_markup,
+                "unit": "Ea",
+                "amount": materials_total_with_markup,
+            }
+        )
+
+    # Aggregate equipment
+    equipment_base = 0.0
+    equipment_base_no_markup = 0.0
+
+    for entry in entries:
+        for item in entry.equipment_rental_items:
+            # Check for dehumidifier rental
+            if (
+                "dehumidifier" in item.equipment_name.lower()
+                and "rental" in item.equipment_name.lower()
+            ):
+                equipment_base_no_markup += item.total_amount
+            else:
+                equipment_base += item.total_amount
+
+    if equipment_base > 0 or equipment_base_no_markup > 0:
+        # Apply markup: base + 10% OH + 10% profit
+        equipment_oh = equipment_base * 0.10
+        equipment_profit = equipment_base * 0.10
+        equipment_total_with_markup = (
+            equipment_base + equipment_oh + equipment_profit + equipment_base_no_markup
+        )
+
+        line_items.append(
+            {
+                "billing_item": "Lump Sum",
+                "description": "Equipment Rentals - T&M Work Performed (with 10% OH + 10% Profit)",
+                "quantity": 1,
+                "unit_price": equipment_total_with_markup,
+                "unit": "Ea",
+                "amount": equipment_total_with_markup,
+            }
+        )
+
+    # Aggregate labor (no markup)
+    labor_total = 0.0
+    for entry in entries:
+        for item in entry.labor_entries:
+            labor_total += item.total_amount
+
+    if labor_total > 0:
+        line_items.append(
+            {
+                "billing_item": "Lump Sum",
+                "description": "Labor - T&M Work Performed",
+                "quantity": 1,
+                "unit_price": labor_total,
+                "unit": "Ea",
+                "amount": labor_total,
+            }
+        )
+
+    # Aggregate pass-through expenses (no markup)
+    passthrough_total = 0.0
+    for entry in entries:
+        for item in entry.passthrough_expenses:
+            passthrough_total += item.amount
+
+    if passthrough_total > 0:
+        line_items.append(
+            {
+                "billing_item": "Lump Sum",
+                "description": "Pass-Through Expenses - Vendor Invoices",
+                "quantity": 1,
+                "unit_price": passthrough_total,
+                "unit": "Ea",
+                "amount": passthrough_total,
+            }
+        )
+
+    return line_items

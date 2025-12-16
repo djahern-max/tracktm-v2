@@ -43,7 +43,8 @@
         <!-- Actions -->
         <div class="actions-bar" id="actionsBar" style="display: none;">
             <button id="saveBtn" class="btn btn-primary">Save Entry</button>
-            <button id="generatePdfBtn" class="btn btn-success">📄 Generate PDF</button>
+            <button id="generatePdfBtn" class="btn btn-success">ðŸ“„ Generate PDF</button>
+            <button id="generateInvoiceBtn" class="btn btn-success">ðŸ“‹ Generate Invoice</button>
             <div class="total-display">
                 <span>Daily Total:</span>
                 <strong id="dailyTotal">$0.00</strong>
@@ -51,7 +52,169 @@
         </div>
     </div>
 
+    <!-- Invoice Modal -->
+    <div id="invoiceModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Generate Invoice</h2>
+                <span class="close-modal" onclick="closeInvoiceModal()">&times;</span>
+            </div>
+
+            <form id="invoiceForm">
+                <!-- Job Information -->
+                <div class="form-section">
+                    <h3>Job Information</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Job Number *</label>
+                            <input type="text" id="inv_job_number" required readonly />
+                        </div>
+                        <div class="form-group">
+                            <label>Job Name *</label>
+                            <input type="text" id="inv_job_name" required />
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group full-width">
+                            <label>Ship To Location *</label>
+                            <input type="text" id="inv_ship_to" required placeholder="e.g. Newport, RI" />
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Invoice Details -->
+                <div class="form-section">
+                    <h3>Invoice Details</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Invoice Number *</label>
+                            <input type="text" id="inv_invoice_number" required placeholder="INV-001" />
+                        </div>
+                        <div class="form-group">
+                            <label>Purchase Order #</label>
+                            <input type="text" id="inv_purchase_order" placeholder="Optional" />
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Payment Terms (Days) *</label>
+                            <input type="number" id="inv_payment_terms" value="30" required min="0" />
+                        </div>
+                        <div class="form-group">
+                            <label>Contract Number</label>
+                            <input type="text" id="inv_contract_number" placeholder="Optional" />
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group full-width">
+                            <label>Aggregation Method</label>
+                            <select id="inv_aggregation_method">
+                                <option value="category">By Category (Materials, Equipment, Labor)</option>
+                                <option value="daily">Daily Breakdown</option>
+                                <option value="detailed">Detailed Line Items</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Date Range -->
+                <div class="form-section">
+                    <h3>Period</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Start Date</label>
+                            <input type="date" id="inv_start_date" />
+                        </div>
+                        <div class="form-group">
+                            <label>End Date</label>
+                            <input type="date" id="inv_end_date" />
+                        </div>
+                    </div>
+                    <p style="font-size: 0.875rem; color: #6b7280; margin-top: 5px;">
+                        Leave blank to include all entries for this job
+                    </p>
+                </div>
+
+                <!-- Company Info -->
+                <div class="form-section">
+                    <h3>Your Company (Remit To)</h3>
+                    <div class="form-row">
+                        <div class="form-group full-width">
+                            <label>Company Name *</label>
+                            <input type="text" id="inv_company_name" required />
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group full-width">
+                            <label>Address Line 1 *</label>
+                            <input type="text" id="inv_company_address1" required />
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group full-width">
+                            <label>Address Line 2 *</label>
+                            <input type="text" id="inv_company_address2" required />
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Phone *</label>
+                            <input type="tel" id="inv_company_phone" required />
+                        </div>
+                        <div class="form-group">
+                            <label>Fax</label>
+                            <input type="tel" id="inv_company_fax" />
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bill To -->
+                <div class="form-section">
+                    <h3>Bill To (Client)</h3>
+                    <div class="form-row">
+                        <div class="form-group full-width">
+                            <label>Client Name *</label>
+                            <input type="text" id="inv_billto_name" required
+                                placeholder="e.g. Reagan Marine Construction LLC" />
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group full-width">
+                            <label>Address Line 1 *</label>
+                            <input type="text" id="inv_billto_address1" required
+                                placeholder="e.g. 221 Third St, 5th Floor Suite 513" />
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group full-width">
+                            <label>Address Line 2 *</label>
+                            <input type="text" id="inv_billto_address2" required placeholder="e.g. Newport, RI 02840" />
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Actions -->
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeInvoiceModal()">Cancel</button>
+                    <button type="submit" class="btn btn-success">Generate Invoice</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script src="app.js"></script>
+    <script src="invoice.js"></script>
+    <script>
+        // Invoice module auto-initializes itself
+        // Just verify it loaded
+        document.addEventListener('DOMContentLoaded', function () {
+            if (window.InvoiceModule && window.InvoiceModule.open) {
+                console.log('✅ Invoice module ready');
+            } else {
+                console.error('❌ Invoice module failed to load');
+            }
+        });
+    </script>
 </body>
 
 </html>

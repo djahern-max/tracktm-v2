@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Invoice Defaults - Admin</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #1f2937;
+        }
+
+        .info-box {
+            background: #dbeafe;
+            border-left: 4px solid #1a56db;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+
+        .job-card {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .job-card h2 {
+            margin-top: 0;
+            color: #1a56db;
+        }
+
+        .field-group {
+            margin-bottom: 15px;
+        }
+
+        .field-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #374151;
+            font-size: 0.875rem;
+        }
+
+        .field-group input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+
+        .code-block {
+            background: #1f2937;
+            color: #f3f4f6;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin-top: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+        }
+
+        .btn {
+            background: #1a56db;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        .btn:hover {
+            background: #1e429f;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>📋 Job Invoice Defaults - Configuration</h1>
+
+    <div class="info-box">
+        <strong>Instructions:</strong> Fill in the default invoice information for each job below.
+        These values will auto-populate when you click "Generate Invoice" for that job number.
+        Copy the generated code and paste it into <code>job_invoice_defaults.py</code>.
+    </div>
+
+    <div class="job-card">
+        <h2>Job 2507 - PNSY DD #2 Stairwells</h2>
+
+        <div class="field-group">
+            <label>Job Name</label>
+            <input type="text" id="job2507_name" value="PNSY DD #2 Stairwells T&M" />
+        </div>
+
+        <div class="field-group">
+            <label>Contract Number</label>
+            <input type="text" id="job2507_contract" value="Contract #2083-S-018" />
+        </div>
+
+        <div class="field-group">
+            <label>Ship To Location</label>
+            <input type="text" id="job2507_shipto" value="Portsmouth Naval Shipyard, Kittery Maine" />
+        </div>
+
+        <div class="field-group">
+            <label>Bill To Name (Client)</label>
+            <input type="text" id="job2507_billname" value="Cianbro Corporation" />
+        </div>
+
+        <div class="field-group">
+            <label>Bill To Address Line 1</label>
+            <input type="text" id="job2507_billaddr1" value="60 Cassidy Drive" />
+        </div>
+
+        <div class="field-group">
+            <label>Bill To Address Line 2</label>
+            <input type="text" id="job2507_billaddr2" value="Portland, ME 04102" />
+        </div>
+
+        <button class="btn" onclick="generateCode('2507')">Generate Code</button>
+    </div>
+
+    <div class="job-card">
+        <h2>Job 2317 - Project 2317</h2>
+
+        <div class="field-group">
+            <label>Job Name</label>
+            <input type="text" id="job2317_name" value="Project 2317" />
+        </div>
+
+        <div class="field-group">
+            <label>Contract Number</label>
+            <input type="text" id="job2317_contract" value="" />
+        </div>
+
+        <div class="field-group">
+            <label>Ship To Location</label>
+            <input type="text" id="job2317_shipto" value="Newport, RI" />
+        </div>
+
+        <div class="field-group">
+            <label>Bill To Name (Client)</label>
+            <input type="text" id="job2317_billname" value="Reagan Marine Construction LLC" />
+        </div>
+
+        <div class="field-group">
+            <label>Bill To Address Line 1</label>
+            <input type="text" id="job2317_billaddr1" value="221 Third St, 5th Floor Suite 513" />
+        </div>
+
+        <div class="field-group">
+            <label>Bill To Address Line 2</label>
+            <input type="text" id="job2317_billaddr2" value="Newport, RI 02840" />
+        </div>
+
+        <button class="btn" onclick="generateCode('2317')">Generate Code</button>
+    </div>
+
+    <div id="codeOutput"></div>
+
+    <script>
+        function generateCode(jobNum) {
+            const name = document.getElementById(`job${jobNum}_name`).value;
+            const contract = document.getElementById(`job${jobNum}_contract`).value;
+            const shipto = document.getElementById(`job${jobNum}_shipto`).value;
+            const billname = document.getElementById(`job${jobNum}_billname`).value;
+            const billaddr1 = document.getElementById(`job${jobNum}_billaddr1`).value;
+            const billaddr2 = document.getElementById(`job${jobNum}_billaddr2`).value;
+
+            const code = `
+JOB_INVOICE_DEFAULTS = {
+    "2507": {
+        "job_name": "${document.getElementById('job2507_name').value}",
+        "contract_number": "${document.getElementById('job2507_contract').value}",
+        "ship_to_location": "${document.getElementById('job2507_shipto').value}",
+        "bill_to_name": "${document.getElementById('job2507_billname').value}",
+        "bill_to_address1": "${document.getElementById('job2507_billaddr1').value}",
+        "bill_to_address2": "${document.getElementById('job2507_billaddr2').value}",
+        "notes": "Subcontract 312550016 - T&M Work on Fuel Building Fireproofing"
+    },
+    "2317": {
+        "job_name": "${document.getElementById('job2317_name').value}",
+        "contract_number": "${document.getElementById('job2317_contract').value}",
+        "ship_to_location": "${document.getElementById('job2317_shipto').value}",
+        "bill_to_name": "${document.getElementById('job2317_billname').value}",
+        "bill_to_address1": "${document.getElementById('job2317_billaddr1').value}",
+        "bill_to_address2": "${document.getElementById('job2317_billaddr2').value}",
+        "notes": ""
+    }
+}`;
+
+            const outputDiv = document.getElementById('codeOutput');
+            outputDiv.innerHTML = `
+                <div class="job-card">
+                    <h2>✅ Generated Code - Copy this to job_invoice_defaults.py</h2>
+                    <p>Replace the JOB_INVOICE_DEFAULTS dictionary in <code>job_invoice_defaults.py</code> with this code:</p>
+                    <div class="code-block">${code.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                    <button class="btn" onclick="copyCode()">📋 Copy to Clipboard</button>
+                </div>
+            `;
+
+            // Store for clipboard
+            window.generatedCode = code;
+        }
+
+        function copyCode() {
+            navigator.clipboard.writeText(window.generatedCode).then(() => {
+                alert('✅ Code copied to clipboard! Paste it into job_invoice_defaults.py');
+            }).catch(err => {
+                alert('Failed to copy. Please manually select and copy the code.');
+            });
+        }
+    </script>
+</body>
+
+</html>

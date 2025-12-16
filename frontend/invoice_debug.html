@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Invoice Debug Test</title>
+</head>
+
+<body>
+    <h1>Invoice System Debug</h1>
+
+    <h2>Step 1: Check if invoice.js loaded</h2>
+    <button onclick="checkInvoiceJS()">Check invoice.js</button>
+    <div id="result1"></div>
+
+    <h2>Step 2: Check if InvoiceModule exists</h2>
+    <button onclick="checkInvoiceModule()">Check InvoiceModule</button>
+    <div id="result2"></div>
+
+    <h2>Step 3: Try to open modal</h2>
+    <button onclick="tryOpenModal()">Try Open Modal</button>
+    <div id="result3"></div>
+
+    <h2>Step 4: Check if API endpoint exists</h2>
+    <button onclick="checkAPI()">Check API</button>
+    <div id="result4"></div>
+
+    <script>
+        function checkInvoiceJS() {
+            const result = document.getElementById('result1');
+            if (typeof openInvoiceModal === 'function') {
+                result.innerHTML = 'âœ… invoice.js loaded - openInvoiceModal function exists';
+                result.style.color = 'green';
+            } else {
+                result.innerHTML = 'âŒ invoice.js NOT loaded - openInvoiceModal function missing';
+                result.style.color = 'red';
+            }
+        }
+
+        function checkInvoiceModule() {
+            const result = document.getElementById('result2');
+            if (window.InvoiceModule) {
+                result.innerHTML = 'âœ… InvoiceModule exists with functions: ' + Object.keys(window.InvoiceModule).join(', ');
+                result.style.color = 'green';
+            } else {
+                result.innerHTML = 'âŒ InvoiceModule does NOT exist';
+                result.style.color = 'red';
+            }
+        }
+
+        function tryOpenModal() {
+            const result = document.getElementById('result3');
+            try {
+                if (window.InvoiceModule && window.InvoiceModule.open) {
+                    window.InvoiceModule.open();
+                    result.innerHTML = 'âœ… Attempted to open modal via InvoiceModule.open()';
+                    result.style.color = 'green';
+                } else if (typeof openInvoiceModal === 'function') {
+                    openInvoiceModal();
+                    result.innerHTML = 'âœ… Attempted to open modal via openInvoiceModal()';
+                    result.style.color = 'green';
+                } else {
+                    result.innerHTML = 'âŒ No way to open modal found';
+                    result.style.color = 'red';
+                }
+            } catch (e) {
+                result.innerHTML = 'âŒ Error: ' + e.message;
+                result.style.color = 'red';
+            }
+        }
+
+        async function checkAPI() {
+            const result = document.getElementById('result4');
+            try {
+                const response = await fetch('http://localhost:8000/api/invoice/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+
+                if (response.status === 422) {
+                    result.innerHTML = 'âœ… API endpoint exists! (422 = missing required fields, which is expected)';
+                    result.style.color = 'green';
+                } else if (response.status === 404) {
+                    result.innerHTML = 'âŒ API endpoint NOT FOUND (404) - main.py needs update';
+                    result.style.color = 'red';
+                } else {
+                    result.innerHTML = 'âš ï¸ API returned status: ' + response.status;
+                    result.style.color = 'orange';
+                }
+            } catch (e) {
+                result.innerHTML = 'âŒ Network error: ' + e.message;
+                result.style.color = 'red';
+            }
+        }
+    </script>
+
+    <!-- Don't load app.js - it expects main form elements -->
+    <!-- <script src="app.js"></script> -->
+    <script>
+        // Define API_BASE for this page
+        window.API_BASE = 'http://localhost:8000/api';
+    </script>
+    <script src="invoice.js"></script>
+</body>
+
+</html>
