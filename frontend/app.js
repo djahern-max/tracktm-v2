@@ -176,7 +176,7 @@ function createSearchBar() {
         <input 
             type="text" 
             id="itemSearch" 
-            placeholder="ðŸ” Search materials, equipment, or labor..." 
+            placeholder="Ã°Å¸â€Â Search materials, equipment, or labor..." 
             class="search-input"
         />
         <button id="clearSearch" class="btn-clear-search">Clear</button>
@@ -369,11 +369,20 @@ function createLaborRoleSection(role, existingEmployees = []) {
     roleSection.className = 'labor-role-section';
     roleSection.setAttribute('data-role-id', role.id);
 
+    // Abbreviate role names for uniform button sizes
+    const roleAbbreviations = {
+        'Painter': 'Painter',
+        'Supervisor': 'Supervisor',
+        'Project Manager': 'Manager',
+        'Per Diem': 'Per Diem'
+    };
+    const buttonText = roleAbbreviations[role.name] || role.name;
+
     const roleHeader = document.createElement('div');
     roleHeader.className = 'labor-role-header';
     roleHeader.innerHTML = `
         <span class="role-name">${role.name} (${formatCurrency(role.straight_rate)}/hr Reg, ${formatCurrency(role.overtime_rate)}/hr OT)</span>
-        <button class="btn-add-employee" data-role-id="${role.id}">+ Add ${role.name}</button>
+        <button class="btn-add-employee" data-role-id="${role.id}">+ Add ${buttonText}</button>
     `;
     roleSection.appendChild(roleHeader);
 
@@ -466,7 +475,7 @@ function createEmployeeRow(role, employeeData = {}) {
             <span>Night</span>
         </label>
         <div class="labor-total" data-row-id="${rowId}">$0.00</div>
-        <button class="btn-remove-employee" data-row-id="${rowId}">Ã—</button>
+        <button class="btn-remove-employee" data-row-id="${rowId}">&times;</button>
     `;
 
     const regInput = row.querySelector('.labor-reg-input');
@@ -708,7 +717,7 @@ function calculateTotal() {
         // Remove $, commas, and any other non-numeric characters except decimal point
         const cleanText = totalText.replace(/[$,]/g, '');
         const total = parseFloat(cleanText) || 0;
-        console.log('Labor total found:', totalText, 'â†’ parsed as:', total);
+        console.log('Labor total found:', totalText, 'Ã¢â€ â€™ parsed as:', total);
         grandTotal += total;
     });
 

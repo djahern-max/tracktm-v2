@@ -248,7 +248,7 @@ class TSIInvoiceGenerator:
                 Paragraph(due_date, self.styles["SmallText"]),
             ],
             [
-                Paragraph("<b>Purchase Order #:</b>", self.styles["SmallText"]),
+                Paragraph("<b>Job Number:</b>", self.styles["SmallText"]),
                 Paragraph(
                     invoice_data.get("purchase_order", ""), self.styles["SmallText"]
                 ),
@@ -331,12 +331,15 @@ class TSIInvoiceGenerator:
         )
 
         # Ship To
-        ship_to_lines = [
-            Paragraph(
-                "<b>Ship to:</b> " + invoice_data.get("ship_to_location", ""),
-                self.styles["SmallText"],
+        ship_to_lines = [Paragraph("<b>Ship To:</b>", self.styles["SectionLabel"])]
+
+        # Add location on separate line
+        if invoice_data.get("ship_to_location"):
+            ship_to_lines.append(
+                Paragraph(
+                    invoice_data.get("ship_to_location", ""), self.styles["SmallText"]
+                )
             )
-        ]
 
         if invoice_data.get("job_name"):
             ship_to_lines.append(
@@ -388,7 +391,6 @@ class TSIInvoiceGenerator:
         table_data = [
             [
                 Paragraph("<b>Unit No.</b>", self.styles["TableHeader"]),
-                Paragraph("<b>Billing Item</b>", self.styles["TableHeader"]),
                 Paragraph("<b>Description</b>", self.styles["TableHeader"]),
                 Paragraph("<b>Quantity</b>", self.styles["TableHeader"]),
                 Paragraph("<b>Unit Price</b>", self.styles["TableHeader"]),
@@ -400,7 +402,6 @@ class TSIInvoiceGenerator:
         # Add line items
         for idx, item in enumerate(line_items, start=1):
             unit_no = f"{float(idx):.1f}"
-            billing_item = item.get("billing_item", "Lump Sum")
             description = item.get("description", "")
             quantity = item.get("quantity", 1)
             unit_price = item.get("unit_price", 0.0)
@@ -415,7 +416,6 @@ class TSIInvoiceGenerator:
             table_data.append(
                 [
                     Paragraph(unit_no, self.styles["CellText"]),
-                    Paragraph(billing_item, self.styles["CellText"]),
                     Paragraph(description, self.styles["CellText"]),
                     Paragraph(qty_str, self.styles["CellText"]),
                     Paragraph(f"$ {unit_price:,.2f}", self.styles["CellText"]),
@@ -424,15 +424,14 @@ class TSIInvoiceGenerator:
                 ]
             )
 
-        # Column widths
+        # Column widths - match Bill To/Ship To width (7.5" total)
         col_widths = [
-            0.6 * inch,
-            1 * inch,
-            2.5 * inch,
-            0.8 * inch,
-            1 * inch,
-            0.6 * inch,
-            1 * inch,
+            0.5 * inch,  # Unit No
+            3.2 * inch,  # Description
+            0.9 * inch,  # Quantity
+            1.0 * inch,  # Unit Price
+            0.9 * inch,  # Unit
+            1.0 * inch,  # Amount
         ]
 
         table = Table(table_data, colWidths=col_widths, repeatRows=1)
@@ -455,11 +454,11 @@ class TSIInvoiceGenerator:
                     ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
                     # Alignment
                     ("ALIGN", (0, 0), (0, -1), "CENTER"),  # Unit No
-                    ("ALIGN", (1, 0), (2, -1), "LEFT"),  # Billing Item, Description
-                    ("ALIGN", (3, 0), (3, -1), "CENTER"),  # Quantity
-                    ("ALIGN", (4, 0), (4, -1), "RIGHT"),  # Unit Price
-                    ("ALIGN", (5, 0), (5, -1), "CENTER"),  # Unit
-                    ("ALIGN", (6, 0), (6, -1), "RIGHT"),  # Amount
+                    ("ALIGN", (1, 0), (1, -1), "LEFT"),  # Description
+                    ("ALIGN", (2, 0), (2, -1), "CENTER"),  # Quantity
+                    ("ALIGN", (3, 0), (3, -1), "RIGHT"),  # Unit Price
+                    ("ALIGN", (4, 0), (4, -1), "CENTER"),  # Unit
+                    ("ALIGN", (5, 0), (5, -1), "RIGHT"),  # Amount
                     ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ]
             )
@@ -476,15 +475,15 @@ class TSIInvoiceGenerator:
         totals_data = [
             [
                 Paragraph("<b>Subtotal</b>", self.styles["SectionLabel"]),
-                Paragraph(f"$ {subtotal:,.2f}", self.styles["SectionLabel"]),
+                f"$ {subtotal:,.2f}",
             ],
             [
                 Paragraph("<b>Invoice Total</b>", self.styles["SectionLabel"]),
-                Paragraph(f"$ {subtotal:,.2f}", self.styles["SectionLabel"]),
+                f"$ {subtotal:,.2f}",
             ],
         ]
 
-        totals_table = Table(totals_data, colWidths=[6.5 * inch, 1 * inch])
+        totals_table = Table(totals_data, colWidths=[6.5 * inch, 1.0 * inch])
         totals_table.setStyle(
             TableStyle(
                 [
@@ -498,6 +497,8 @@ class TSIInvoiceGenerator:
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
                     ("LEFTPADDING", (0, 0), (-1, -1), 10),
                     ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                    ("FONTNAME", (1, 0), (1, -1), "Helvetica-Bold"),
+                    ("FONTSIZE", (1, 0), (1, -1), 10),
                 ]
             )
         )
@@ -518,7 +519,7 @@ class TSIInvoiceGenerator:
             with open(filepath, "wb") as f:
                 f.write(buffer.getvalue())
 
-            print(f"✓ Invoice saved: {filepath}")
+            print(f"âœ“ Invoice saved: {filepath}")
         except Exception as e:
             print(f"Warning: Could not save invoice backup: {e}")
 

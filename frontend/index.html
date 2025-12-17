@@ -43,8 +43,8 @@
         <!-- Actions -->
         <div class="actions-bar" id="actionsBar" style="display: none;">
             <button id="saveBtn" class="btn btn-primary">Save Entry</button>
-            <button id="generatePdfBtn" class="btn btn-success">ðŸ“„ Generate PDF</button>
-            <button id="generateInvoiceBtn" class="btn btn-success">ðŸ“‹ Generate Invoice</button>
+            <button id="generatePdfBtn" class="btn btn-success">&#128196; Generate PDF</button>
+            <button id="generateInvoiceBtn" class="btn btn-success">&#128203; Generate Invoice</button>
             <div class="total-display">
                 <span>Daily Total:</span>
                 <strong id="dailyTotal">$0.00</strong>
@@ -209,9 +209,9 @@
         // Just verify it loaded
         document.addEventListener('DOMContentLoaded', function () {
             if (window.InvoiceModule && window.InvoiceModule.open) {
-                console.log('✅ Invoice module ready');
+                console.log('âœ… Invoice module ready');
             } else {
-                console.error('❌ Invoice module failed to load');
+                console.error('âŒ Invoice module failed to load');
             }
         });
     </script>

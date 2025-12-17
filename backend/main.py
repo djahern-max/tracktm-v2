@@ -33,7 +33,7 @@ from invoice_generator import generate_invoice_pdf
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    print("Ã¢Å“â€œ Database initialized")
+    print("ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“ Database initialized")
     yield
 
 
@@ -612,26 +612,23 @@ def _aggregate_by_category(entries):
 
     # Aggregate materials
     materials_base = 0.0
-    materials_base_no_markup = 0.0
 
     for entry in entries:
         for item in entry.line_items:
-            # Check for dehumidifier rental
+            # Skip dehumidifier rentals (handled separately)
             if (
                 "dehumidifier" in item.material.name.lower()
                 and "rental" in item.material.name.lower()
             ):
-                materials_base_no_markup += item.total_amount
+                continue
             else:
                 materials_base += item.total_amount
 
-    if materials_base > 0 or materials_base_no_markup > 0:
+    if materials_base > 0:
         # Apply markup: base + 10% OH + 10% profit
         materials_oh = materials_base * 0.10
         materials_profit = materials_base * 0.10
-        materials_total_with_markup = (
-            materials_base + materials_oh + materials_profit + materials_base_no_markup
-        )
+        materials_total_with_markup = materials_base + materials_oh + materials_profit
 
         line_items.append(
             {
@@ -646,26 +643,24 @@ def _aggregate_by_category(entries):
 
     # Aggregate equipment
     equipment_base = 0.0
-    equipment_base_no_markup = 0.0
+    dehumidifier_total = 0.0
 
     for entry in entries:
         for item in entry.equipment_rental_items:
-            # Check for dehumidifier rental
+            # Check for dehumidifier rental - separate line item, no markup
             if (
                 "dehumidifier" in item.equipment_name.lower()
                 and "rental" in item.equipment_name.lower()
             ):
-                equipment_base_no_markup += item.total_amount
+                dehumidifier_total += item.total_amount
             else:
                 equipment_base += item.total_amount
 
-    if equipment_base > 0 or equipment_base_no_markup > 0:
+    if equipment_base > 0:
         # Apply markup: base + 10% OH + 10% profit
         equipment_oh = equipment_base * 0.10
         equipment_profit = equipment_base * 0.10
-        equipment_total_with_markup = (
-            equipment_base + equipment_oh + equipment_profit + equipment_base_no_markup
-        )
+        equipment_total_with_markup = equipment_base + equipment_oh + equipment_profit
 
         line_items.append(
             {
@@ -675,6 +670,19 @@ def _aggregate_by_category(entries):
                 "unit_price": equipment_total_with_markup,
                 "unit": "Ea",
                 "amount": equipment_total_with_markup,
+            }
+        )
+
+    # Dehumidifier rental as separate pass-through line item
+    if dehumidifier_total > 0:
+        line_items.append(
+            {
+                "billing_item": "Lump Sum",
+                "description": "Dehumidifier Rental - United Rentals Invoice #253422466-002 (Pass-through)",
+                "quantity": 1,
+                "unit_price": dehumidifier_total,
+                "unit": "Ea",
+                "amount": dehumidifier_total,
             }
         )
 
