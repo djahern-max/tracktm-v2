@@ -303,7 +303,7 @@ class PassThroughExpense(Base):
 
 
 # Database setup
-DATABASE_URL = "sqlite+aiosqlite:///./tracktm.db"
+DATABASE_URL = "sqlite+aiosqlite:///./tracktm.db?check_same_thread=False&foreign_keys=ON"
 
 
 def get_engine():

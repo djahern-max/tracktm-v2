@@ -257,7 +257,7 @@ class TSIReportGenerator:
             with open(filepath, "wb") as f:
                 f.write(buffer.getvalue())
 
-            print(f"✓ Report saved: {filepath}")
+            print(f"âœ“ Report saved: {filepath}")
         except Exception as e:
             print(f"Warning: Could not save report backup: {e}")
 
@@ -565,7 +565,7 @@ class TSIReportGenerator:
 
         labor_total = 0
         for entry in labor_entries:
-            employee_name = entry.get("employee_name") or "—"
+            employee_name = entry.get("employee_name") or "â€”"
             reg_hrs = (
                 f"{entry['regular_hours']:.1f}"
                 if entry["regular_hours"] % 1 != 0
@@ -586,7 +586,7 @@ class TSIReportGenerator:
                     Paragraph(ot_hrs, self.styles["TableText"]),
                     Paragraph(night_shift, self.styles["TableText"]),
                     Paragraph(
-                        f"${entry['total_amount']:.2f}", self.styles["TableText"]
+                        f"${entry['total_amount']:,.2f}", self.styles["TableText"]
                     ),
                 ]
             )
