@@ -176,7 +176,7 @@ function createSearchBar() {
         <input 
             type="text" 
             id="itemSearch" 
-            placeholder="Ã°Å¸â€Â Search materials, equipment, or labor..." 
+            placeholder="Search materials, equipment, or labor..." 
             class="search-input"
         />
         <button id="clearSearch" class="btn-clear-search">Clear</button>
