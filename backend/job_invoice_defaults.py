@@ -22,6 +22,15 @@ JOB_INVOICE_DEFAULTS = {
         "bill_to_address2": "Newport, RI 02840",
         "notes": "",
     },
+    "2509": {
+        "job_name": "Dutch Point T&M",
+        "contract_number": "Project No. 0063-0726, Paragraph No. 1.09.04",
+        "ship_to_location": "Framingham, MA",
+        "bill_to_name": "JF White Contracting Co.",
+        "bill_to_address1": "10 Burr Street",
+        "bill_to_address2": "Framingham, MA 01701",
+        "notes": "Project No. 0063-0726, Paragraph No. 1.09.04 (Extra and Cost-Plus Work)",
+    },
 }
 
 

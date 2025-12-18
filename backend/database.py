@@ -1,3 +1,4 @@
+# database.py
 """
 Database Models - SQLAlchemy with SQLite
 Updated with Labor Tracking Support + Multiple Employees Per Role
@@ -45,6 +46,77 @@ class Material(Base):
             "category": self.category,
             "unit": self.unit,
             "unit_price": float(self.unit_price),
+        }
+
+
+class JobMaterial(Base):
+    """Job-specific materials catalog with pricing"""
+
+    __tablename__ = "job_materials"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    job_number = Column(String(50), nullable=False)
+    name = Column(String(255), nullable=False)
+    category = Column(String(50), nullable=False)
+    unit = Column(String(50), nullable=False)
+    unit_price = Column(Numeric(10, 2), nullable=False)
+    active = Column(Boolean, default=True)
+
+    __table_args__ = (
+        UniqueConstraint("job_number", "name", name="unique_job_material"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "job_number": self.job_number,
+            "name": self.name,
+            "category": self.category,
+            "unit": self.unit,
+            "unit_price": float(self.unit_price),
+            "active": self.active,
+        }
+
+
+class Employee(Base):
+    """Employees who work on jobs - with full payroll data"""
+
+    __tablename__ = "employees"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    employee_number = Column(String(50), nullable=False, unique=True)  # 10551, etc.
+    first_name = Column(String(100), nullable=False)
+    last_name = Column(String(100), nullable=False)
+    union = Column(String(50), nullable=False)  # DC9, DC35, DC11
+    regular_rate = Column(Numeric(10, 2), nullable=False)  # Regular hourly rate
+    overtime_rate = Column(Numeric(10, 2), nullable=False)  # Overtime hourly rate
+    health_welfare = Column(Numeric(10, 2), nullable=False)  # H&W benefit amount
+    pension = Column(Numeric(10, 2), nullable=False)  # Pension benefit amount
+    active = Column(Boolean, default=True)
+    notes = Column(Text, nullable=True)
+
+    # Relationship to labor entries
+    labor_entries = relationship("LaborEntry", back_populates="employee")
+
+    @property
+    def full_name(self):
+        """Return formatted full name"""
+        return f"{self.first_name} {self.last_name}"
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "employee_number": self.employee_number,
+            "first_name": self.first_name,
+            "last_name": self.last_name,
+            "full_name": self.full_name,
+            "union": self.union,
+            "regular_rate": float(self.regular_rate),
+            "overtime_rate": float(self.overtime_rate),
+            "health_welfare": float(self.health_welfare),
+            "pension": float(self.pension),
+            "active": self.active,
+            "notes": self.notes,
         }
 
 
@@ -176,9 +248,12 @@ class LaborEntry(Base):
         Integer, ForeignKey("daily_entries.id", ondelete="CASCADE"), nullable=False
     )
     labor_role_id = Column(Integer, ForeignKey("labor_roles.id"), nullable=False)
+    employee_id = Column(
+        Integer, ForeignKey("employees.id"), nullable=True
+    )  # Link to employees table
     employee_name = Column(
         String(255), nullable=True
-    )  # Optional but recommended for tracking
+    )  # Optional fallback for backward compatibility
     regular_hours = Column(Numeric(10, 2), nullable=False, default=0)
     overtime_hours = Column(Numeric(10, 2), nullable=False, default=0)
     night_shift = Column(Boolean, default=False)  # Night shift differential
@@ -186,6 +261,7 @@ class LaborEntry(Base):
     # Relationships
     daily_entry = relationship("DailyEntry", back_populates="labor_entries")
     labor_role = relationship("LaborRole", back_populates="labor_entries")
+    employee = relationship("Employee", back_populates="labor_entries")
 
     @property
     def total_amount(self):
@@ -203,12 +279,20 @@ class LaborEntry(Base):
         return regular_cost + overtime_cost
 
     def to_dict(self):
+        # Get employee name from relationship if available, otherwise use stored name
+        employee_name = None
+        if self.employee:
+            employee_name = self.employee.full_name
+        elif self.employee_name:
+            employee_name = self.employee_name
+
         return {
             "id": self.id,
             "labor_role_id": self.labor_role_id,
             "role_name": self.labor_role.name,
             "category": self.labor_role.category,
-            "employee_name": self.employee_name,
+            "employee_id": self.employee_id,
+            "employee_name": employee_name,
             "regular_hours": float(self.regular_hours),
             "overtime_hours": float(self.overtime_hours),
             "night_shift": self.night_shift,
@@ -303,7 +387,15 @@ class PassThroughExpense(Base):
 
 
 # Database setup
-DATABASE_URL = "sqlite+aiosqlite:///./tracktm.db?check_same_thread=False&foreign_keys=ON"
+import os
+from pathlib import Path
+
+# Get database path - use environment variable or default to current directory
+# This allows the database to be in the same directory as the Python files
+DB_DIR = os.getenv("TRACKTM_DB_DIR", os.path.dirname(os.path.abspath(__file__)))
+DB_PATH = Path(DB_DIR) / "tracktm.db"
+
+DATABASE_URL = f"sqlite+aiosqlite:///{DB_PATH}?check_same_thread=False&foreign_keys=ON"
 
 
 def get_engine():
@@ -315,7 +407,7 @@ def init_db():
     """Initialize database (create all tables)"""
     engine = get_engine()
     Base.metadata.create_all(engine)
-    print("ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Database initialized successfully!")
+    print("Database initialized successfully!")
     return engine
 
 

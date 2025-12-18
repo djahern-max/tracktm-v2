@@ -25,11 +25,17 @@ async function init() {
     await loadLaborRoles();
     await loadEquipmentRentals();
 
+    // Load employees if module is available
+    if (window.EmployeesModule && window.EmployeesModule.init) {
+        await window.EmployeesModule.init();
+    }
+
     // Setup event listeners
     document.getElementById('loadBtn').addEventListener('click', loadEntry);
     document.getElementById('newBtn').addEventListener('click', newEntry);
     document.getElementById('saveBtn').addEventListener('click', saveEntry);
     document.getElementById('generatePdfBtn').addEventListener('click', generatePDF);
+    document.getElementById('generateCon9CsvBtn').addEventListener('click', generateCon9CSV);
 }
 
 // ============================================
@@ -38,11 +44,16 @@ async function init() {
 
 async function loadMaterials() {
     try {
-        const response = await fetch(`${API_BASE}/materials`);
+        const jobNumber = document.getElementById('jobNumber').value;
+        const url = jobNumber
+            ? `${API_BASE}/materials?job_number=${jobNumber}`
+            : `${API_BASE}/materials`;
+
+        const response = await fetch(url);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data = await response.json();
         materials = data;
-        console.log(`Loaded ${materials.length} materials`);
+        console.log(`Loaded ${materials.length} materials${jobNumber ? ` for job ${jobNumber}` : ''}`);
     } catch (error) {
         console.error('Error loading materials:', error);
         alert('Failed to load materials catalog');
@@ -89,6 +100,9 @@ async function loadEntry() {
 
     loadJobInfo(jobNumber);
 
+    // Reload materials for this job (may be job-specific)
+    await loadMaterials();
+
     try {
         const response = await fetch(`${API_BASE}/entries/${jobNumber}/${entryDate}`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -112,10 +126,12 @@ async function loadEntry() {
     }
 }
 
-function newEntry() {
+async function newEntry() {
     const jobNumber = document.getElementById('jobNumber').value;
     if (jobNumber) {
         loadJobInfo(jobNumber);
+        // Reload materials for this job (may be job-specific)
+        await loadMaterials();
     }
     currentEntry = null;
     displayForm([], [], []);
@@ -156,6 +172,13 @@ function displayForm(existingLineItems = [], existingLaborItems = [], existingEq
     // Labor
     const laborSection = createLaborSection(existingLaborItems);
     container.appendChild(laborSection);
+
+    // â†“â†“â†“ ADD THESE LINES â†“â†“â†“
+    // Employees Section
+    const employeeEntries = existingLaborItems.filter(item => item.employee_id);
+    const employeesSection = window.EmployeesModule.createSection(employeeEntries);
+    container.appendChild(employeesSection);
+    // â†‘â†‘â†‘ END NEW SECTION â†‘â†‘â†‘
 
     document.getElementById('actionsBar').style.display = 'flex';
 
@@ -346,9 +369,18 @@ function createLaborSection(existingLaborItems = []) {
     section.className = 'category-section';
 
     const header = document.createElement('div');
-    header.className = 'category-header';
-    header.textContent = 'LABOR';
+    header.className = 'category-header collapsible-header';
+    header.innerHTML = `
+        <span>FIXED RATE LABOR</span>
+        <span class="collapse-icon">▶</span>
+    `;
+    header.style.cursor = 'pointer';
     section.appendChild(header);
+
+    // Container for all labor role sections (collapsible content)
+    const laborContent = document.createElement('div');
+    laborContent.className = 'collapsible-content';
+    laborContent.style.display = 'none'; // Start collapsed
 
     const laborByRole = {};
     existingLaborItems.forEach(item => {
@@ -358,7 +390,21 @@ function createLaborSection(existingLaborItems = []) {
 
     laborRoles.forEach(role => {
         const roleSection = createLaborRoleSection(role, laborByRole[role.id] || []);
-        section.appendChild(roleSection);
+        laborContent.appendChild(roleSection);
+    });
+
+    section.appendChild(laborContent);
+
+    // Add click handler to toggle
+    header.addEventListener('click', () => {
+        const icon = header.querySelector('.collapse-icon');
+        if (laborContent.style.display === 'none') {
+            laborContent.style.display = 'block';
+            icon.textContent = '▼';
+        } else {
+            laborContent.style.display = 'none';
+            icon.textContent = '▶';
+        }
     });
 
     return section;
@@ -714,16 +760,23 @@ function calculateTotal() {
     // Labor - Fixed to properly parse the text content
     document.querySelectorAll('.labor-total').forEach(cell => {
         const totalText = cell.textContent.trim();
-        // Remove $, commas, and any other non-numeric characters except decimal point
         const cleanText = totalText.replace(/[$,]/g, '');
         const total = parseFloat(cleanText) || 0;
-        console.log('Labor total found:', totalText, 'Ã¢â€ â€™ parsed as:', total);
+        console.log('Labor total found:', totalText, 'â†’ parsed as:', total);
         grandTotal += total;
     });
+
+    // â†“â†“â†“ ADD THESE LINES â†“â†“â†“
+    // Employees
+    const employeeTotal = window.EmployeesModule.calculateTotal();
+    grandTotal += employeeTotal;
+    // â†‘â†‘â†‘ END NEW SECTION â†‘â†‘â†‘
 
     console.log('Grand total calculated:', grandTotal);
     document.getElementById('dailyTotal').textContent = formatCurrency(grandTotal);
 }
+
+window.calculateTotal = calculateTotal;
 
 // ============================================
 // SAVE ENTRY
@@ -777,7 +830,7 @@ async function saveEntry() {
         }
     });
 
-    // Collect labor items
+    // Collect labor items (generic labor section)
     const laborItems = [];
     document.querySelectorAll('.employee-row').forEach(row => {
         const rowId = row.getAttribute('data-row-id');
@@ -802,7 +855,16 @@ async function saveEntry() {
         }
     });
 
-    if (lineItems.length === 0 && laborItems.length === 0 && equipmentItems.length === 0) {
+    // â†“â†“â†“ ADD THESE LINES â†“â†“â†“
+    // Collect employee entries
+    const employeeItems = window.EmployeesModule.collectEntries();
+
+    // Combine all labor items
+    const allLaborItems = [...laborItems, ...employeeItems];
+    // â†‘â†‘â†‘ END NEW SECTION â†‘â†‘â†‘
+
+    // â†“â†“â†“ CHANGE THIS LINE â†“â†“â†“
+    if (lineItems.length === 0 && allLaborItems.length === 0 && equipmentItems.length === 0) {
         alert('Please enter at least one material quantity, equipment, or labor hours');
         return;
     }
@@ -816,7 +878,7 @@ async function saveEntry() {
                 entry_date: entryDate,
                 line_items: lineItems,
                 equipment_items: equipmentItems,
-                labor_items: laborItems
+                labor_items: allLaborItems  // â† CHANGE from laborItems to allLaborItems
             })
         });
 
@@ -894,6 +956,60 @@ async function generatePDF() {
     } catch (error) {
         console.error('Error generating PDF:', error);
         alert('Failed to generate PDF: ' + error.message);
+    }
+}
+
+async function generateCon9CSV() {
+    const jobNumber = document.getElementById('jobNumber').value;
+    const entryDate = document.getElementById('entryDate').value;
+    const companyName = document.getElementById('companyName').value || 'Tri-State Painting, LLC (TSI)';
+    const jobName = document.getElementById('jobName').value || '';
+
+    if (!jobNumber || !entryDate) {
+        alert('Please load an entry first');
+        return;
+    }
+
+    const formData = {
+        job_number: jobNumber,
+        job_name: jobName,
+        company_name: companyName,
+        company_address_line1: '612 West Main Street Unit 2',
+        company_address_line2: 'Tilton, NH 03276',
+        company_phone: '(603) 286-7657',
+        company_fax: '(603) 286-7882',
+        start_date: entryDate
+    };
+
+    try {
+        showMessage('Generating Con9 CSV...', 'info');
+
+        const response = await fetch(`${API_BASE}/reports/con9-csv`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData)
+        });
+
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Con9_${jobNumber}_${entryDate}.csv`;
+
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+
+            showMessage('Con9 CSV exported successfully!', 'success');
+        } else {
+            const error = await response.json();
+            throw new Error(error.detail || 'Unknown error');
+        }
+    } catch (error) {
+        console.error('Error generating Con9 CSV:', error);
+        alert('Failed to generate Con9 CSV: ' + error.message);
     }
 }
 

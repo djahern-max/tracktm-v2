@@ -131,6 +131,30 @@ body {
     margin-bottom: 10px;
 }
 
+/* Collapsible Header */
+.category-header.collapsible-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    user-select: none;
+    transition: background 0.2s;
+}
+
+.category-header.collapsible-header:hover {
+    background: #f3f4f6;
+}
+
+.collapse-icon {
+    font-size: 0.9rem;
+    color: #6b7280;
+    transition: transform 0.2s;
+}
+
+.collapsible-content {
+    transition: all 0.3s ease-in-out;
+    overflow: hidden;
+}
+
 /* Material Items Table */
 .materials-table {
     width: 100%;
@@ -371,6 +395,13 @@ body {
     display: flex;
     gap: 15px;
     align-items: center;
+}
+
+.actions-bar .btn {
+    padding: 10px 20px;
+    font-size: 0.95rem;
+    white-space: nowrap;
+    min-width: 140px;
 }
 
 .total-display {

@@ -1,3 +1,4 @@
+# main.py
 """
 TrackTM Simplified API
 Single PDF output with markup logic
@@ -17,23 +18,26 @@ from sqlalchemy import text
 from database import (
     get_session,
     Material,
+    JobMaterial,
     LaborRole,
     DailyEntry,
     EntryLineItem,
     LaborEntry,
     EquipmentRentalEntry,
+    Employee,
     init_db,
 )
 
 from simplified_report_generator import generate_daily_report_pdf
 from invoice_generator import generate_invoice_pdf
+from con9_csv_generator import generate_con9_csv, format_con9_filename
 
 
 # Initialize database on startup
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    print("ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“ Database initialized")
+    print("Database initialized")
     yield
 
 
@@ -71,6 +75,34 @@ class LaborRoleResponse(BaseModel):
     unit: str
 
 
+class EmployeeResponse(BaseModel):
+    id: int
+    employee_number: str
+    first_name: str
+    last_name: str
+    full_name: str
+    union: str
+    regular_rate: float
+    overtime_rate: float
+    health_welfare: float
+    pension: float
+    active: bool
+    notes: Optional[str] = None
+
+
+class EmployeeInput(BaseModel):
+    employee_number: str
+    first_name: str
+    last_name: str
+    union: str
+    regular_rate: float
+    overtime_rate: float
+    health_welfare: float
+    pension: float
+    active: bool = True
+    notes: Optional[str] = None
+
+
 class EquipmentRentalResponse(BaseModel):
     id: int
     category: str
@@ -91,7 +123,8 @@ class LineItemInput(BaseModel):
 
 class LaborItemInput(BaseModel):
     labor_role_id: int
-    employee_name: Optional[str] = None
+    employee_id: Optional[int] = None  # Reference to employees table
+    employee_name: Optional[str] = None  # Fallback for backward compatibility
     regular_hours: float = 0
     overtime_hours: float = 0
     night_shift: bool = False
@@ -212,21 +245,45 @@ def api_root():
 
 
 @app.get("/api/materials", response_model=List[MaterialResponse])
-def get_materials(db: Session = Depends(get_db)):
-    """Get all materials in category order"""
+def get_materials(job_number: Optional[str] = None, db: Session = Depends(get_db)):
+    """Get all materials in category order - job-specific if available, otherwise default"""
     CATEGORY_ORDER = ["EQUIPMENT", "MATERIALS", "PPE", "CONSUMABLES", "FUEL", "LODGING"]
 
-    all_materials = db.query(Material).all()
+    if job_number:
+        # Try to get job-specific materials first
+        job_materials = (
+            db.query(JobMaterial)
+            .filter(JobMaterial.job_number == job_number, JobMaterial.active == True)
+            .all()
+        )
+
+        if job_materials:
+            # Use job-specific materials
+            materials = [mat.to_dict() for mat in job_materials]
+            print(
+                f"✓ Loaded {len(materials)} job-specific materials for job {job_number}"
+            )
+        else:
+            # Fall back to default catalog
+            all_materials = db.query(Material).all()
+            materials = [mat.to_dict() for mat in all_materials]
+            print(
+                f"✓ Using default catalog ({len(materials)} materials) for job {job_number}"
+            )
+    else:
+        # Default catalog
+        all_materials = db.query(Material).all()
+        materials = [mat.to_dict() for mat in all_materials]
 
     def sort_key(mat):
         try:
-            cat_index = CATEGORY_ORDER.index(mat.category)
+            cat_index = CATEGORY_ORDER.index(mat["category"])
         except ValueError:
             cat_index = 999
-        return (cat_index, mat.name)
+        return (cat_index, mat["name"])
 
-    materials = sorted(all_materials, key=sort_key)
-    return [mat.to_dict() for mat in materials]
+    materials = sorted(materials, key=sort_key)
+    return materials
 
 
 @app.get("/api/labor-roles", response_model=List[LaborRoleResponse])
@@ -234,6 +291,115 @@ def get_labor_roles(db: Session = Depends(get_db)):
     """Get all labor roles"""
     roles = db.query(LaborRole).order_by(LaborRole.name).all()
     return [role.to_dict() for role in roles]
+
+
+@app.get("/api/employees", response_model=List[EmployeeResponse])
+def get_employees(active_only: bool = True, db: Session = Depends(get_db)):
+    """Get all employees"""
+    query = db.query(Employee).order_by(Employee.last_name)
+    if active_only:
+        query = query.filter(Employee.active == True)
+    employees = query.all()
+    return [emp.to_dict() for emp in employees]
+
+
+@app.post("/api/employees", response_model=EmployeeResponse)
+def create_employee(employee_input: EmployeeInput, db: Session = Depends(get_db)):
+    """Create a new employee"""
+    # Check if employee number already exists
+    existing = (
+        db.query(Employee)
+        .filter(Employee.employee_number == employee_input.employee_number)
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Employee number '{employee_input.employee_number}' already exists",
+        )
+
+    employee = Employee(
+        employee_number=employee_input.employee_number,
+        first_name=employee_input.first_name,
+        last_name=employee_input.last_name,
+        union=employee_input.union,
+        regular_rate=Decimal(str(employee_input.regular_rate)),
+        overtime_rate=Decimal(str(employee_input.overtime_rate)),
+        health_welfare=Decimal(str(employee_input.health_welfare)),
+        pension=Decimal(str(employee_input.pension)),
+        active=employee_input.active,
+        notes=employee_input.notes,
+    )
+    db.add(employee)
+    db.commit()
+    db.refresh(employee)
+    return employee.to_dict()
+
+
+@app.put("/api/employees/{employee_id}", response_model=EmployeeResponse)
+def update_employee(
+    employee_id: int, employee_input: EmployeeInput, db: Session = Depends(get_db)
+):
+    """Update an employee"""
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    # Check if employee number is being changed to one that already exists
+    if employee_input.employee_number != employee.employee_number:
+        existing = (
+            db.query(Employee)
+            .filter(Employee.employee_number == employee_input.employee_number)
+            .first()
+        )
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Employee number '{employee_input.employee_number}' already exists",
+            )
+
+    employee.employee_number = employee_input.employee_number
+    employee.first_name = employee_input.first_name
+    employee.last_name = employee_input.last_name
+    employee.union = employee_input.union
+    employee.regular_rate = Decimal(str(employee_input.regular_rate))
+    employee.overtime_rate = Decimal(str(employee_input.overtime_rate))
+    employee.health_welfare = Decimal(str(employee_input.health_welfare))
+    employee.pension = Decimal(str(employee_input.pension))
+    employee.active = employee_input.active
+    employee.notes = employee_input.notes
+
+    db.commit()
+    db.refresh(employee)
+    return employee.to_dict()
+
+
+@app.delete("/api/employees/{employee_id}")
+def delete_employee(employee_id: int, db: Session = Depends(get_db)):
+    """Delete an employee (or mark as inactive if they have labor entries)"""
+    employee = db.query(Employee).filter(Employee.id == employee_id).first()
+    if not employee:
+        raise HTTPException(status_code=404, detail="Employee not found")
+
+    # Check if employee has any labor entries
+    has_entries = (
+        db.query(LaborEntry).filter(LaborEntry.employee_id == employee_id).first()
+    )
+
+    if has_entries:
+        # Don't delete, just mark as inactive
+        employee.active = False
+        db.commit()
+        return {
+            "message": f"Employee '{employee.full_name}' (#{employee.employee_number}) marked as inactive (has labor entries)"
+        }
+    else:
+        # Safe to delete
+        name = employee.full_name
+        number = employee.employee_number
+        db.delete(employee)
+        db.commit()
+        return {"message": f"Employee '{name}' (#{number}) deleted successfully"}
 
 
 @app.get("/api/equipment-rentals", response_model=List[EquipmentRentalResponse])
@@ -419,9 +585,22 @@ def create_or_update_entry(entry_input: DailyEntryInput, db: Session = Depends(g
                         detail=f"Labor role ID {labor_item.labor_role_id} not found",
                     )
 
+                # Verify employee_id if provided
+                employee_id = labor_item.employee_id
+                if employee_id:
+                    employee = (
+                        db.query(Employee).filter(Employee.id == employee_id).first()
+                    )
+                    if not employee:
+                        raise HTTPException(
+                            status_code=404,
+                            detail=f"Employee ID {employee_id} not found",
+                        )
+
                 labor_entry = LaborEntry(
                     daily_entry_id=daily_entry.id,
                     labor_role_id=labor_item.labor_role_id,
+                    employee_id=employee_id,
                     employee_name=labor_item.employee_name,
                     regular_hours=Decimal(str(labor_item.regular_hours)),
                     overtime_hours=Decimal(str(labor_item.overtime_hours)),
@@ -498,6 +677,69 @@ def generate_daily_report(request: ReportRequest, db: Session = Depends(get_db))
         print(f"Error generating report: {e}")
         raise HTTPException(
             status_code=500, detail=f"Failed to generate report: {str(e)}"
+        )
+
+
+@app.post("/api/reports/con9-csv")
+def generate_con9_csv_export(request: ReportRequest, db: Session = Depends(get_db)):
+    """Generate Con9 CSV export for daily entry"""
+
+    try:
+        entry_date = request.start_date if request.start_date else None
+
+        if not entry_date:
+            raise HTTPException(
+                status_code=400, detail="Please provide a date (use start_date field)"
+            )
+
+        # Get the specific entry
+        entry = (
+            db.query(DailyEntry)
+            .filter(
+                DailyEntry.job_number == request.job_number,
+                DailyEntry.entry_date == entry_date,
+            )
+            .first()
+        )
+
+        if not entry:
+            raise HTTPException(
+                status_code=404, detail=f"No entry found for {entry_date}"
+            )
+
+        # Prepare job info
+        job_info = {
+            "job_number": request.job_number,
+            "job_name": request.job_name or f"Job {request.job_number}",
+            "entry_date": str(entry.entry_date),
+            "contractor": request.company_name,
+        }
+
+        # Prepare entry data
+        entry_data = entry.to_dict()
+
+        # Generate CSV
+        csv_buffer = generate_con9_csv(entry_data, job_info)
+
+        # Generate filename
+        filename = format_con9_filename(request.job_number, entry_date)
+
+        # Return CSV
+        return StreamingResponse(
+            iter([csv_buffer.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error generating Con9 CSV: {e}")
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500, detail=f"Failed to generate Con9 CSV: {str(e)}"
         )
 
 
