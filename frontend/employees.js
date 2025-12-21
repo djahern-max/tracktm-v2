@@ -12,9 +12,9 @@
     // ============================================
 
     async function initEmployees() {
-        console.log('ðŸ”§ Initializing employees module...');
+        console.log('Initializing employees module...');
         await loadEmployees();
-        console.log(`âœ… Loaded ${employees.length} employees`);
+        console.log(`Loaded ${employees.length} employees`);
     }
 
     // ============================================
@@ -87,6 +87,10 @@
                 const row = createEmployeeEntryRow(entry);
                 employeesContainer.appendChild(row);
             });
+
+            setTimeout(() => {
+                if (window.calculateTotal) window.calculateTotal();
+            }, 100);
         }
 
         section.appendChild(employeesContainer);
@@ -223,7 +227,7 @@
         <div class="employee-entry-header">
             <div class="employee-info">
                 <strong>${employee.full_name}</strong>
-                <span class="employee-meta">#${employee.employee_number} â€¢ ${employee.union}</span>
+                <span class="employee-meta">#${employee.employee_number} ${employee.union}</span>
             </div>
             <button class="btn-remove-employee-entry" data-row-id="${rowId}">&times;</button>
         </div>
@@ -348,7 +352,7 @@
 
         const totalCost = wagesCost + hwCost + pensionCost;
 
-        totalCell.textContent = `$${totalCost.toFixed(2)}`;
+        totalCell.textContent = `$${totalCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
 
     // ============================================
@@ -411,6 +415,4 @@
         calculateTotal: calculateEmployeeTotal
     };
 
-    console.log('ðŸ“¦ EmployeesModule loaded');
-
-})();
+}());

@@ -43,7 +43,6 @@ body {
     align-self: end;
 }
 
-
 .info-group {
     display: flex;
     flex-direction: column;
@@ -206,6 +205,40 @@ body {
     outline: none;
     border-color: #1a56db;
     background: #eff6ff;
+}
+
+/* Equipment Hours Input */
+.equipment-hours-input {
+    width: 80px;
+    padding: 6px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 1rem;
+    transition: all 0.2s;
+}
+
+.equipment-hours-input:focus {
+    outline: none;
+    border-color: #1a56db;
+    background: #eff6ff;
+    box-shadow: 0 0 0 3px rgba(26, 86, 219, 0.1);
+}
+
+/* Equipment Rate Display */
+.equipment-rate-display {
+    text-align: center;
+    font-weight: 500;
+    color: #374151;
+    font-size: 0.95rem;
+}
+
+/* Equipment Total */
+.equipment-total {
+    font-weight: 600;
+    text-align: right;
+    color: #111827;
+    font-size: 1rem;
 }
 
 /* Material Price Input */
@@ -397,10 +430,10 @@ body {
     align-items: center;
 }
 
+/* Uniform button sizes in actions bar */
 .actions-bar .btn {
     padding: 10px 20px;
     font-size: 0.95rem;
-    white-space: nowrap;
     min-width: 140px;
 }
 
@@ -452,7 +485,7 @@ body {
     font-weight: 600;
 }
 
-/* Invoice Modal Styles - Add to your styles.css */
+/* Invoice Modal Styles */
 
 /* Modal Overlay */
 .modal {
@@ -618,24 +651,6 @@ body {
     background: #f9fafb;
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-    .modal-content {
-        width: 95%;
-        margin: 10px;
-    }
-
-    .form-row {
-        grid-template-columns: 1fr;
-    }
-
-    .modal-header,
-    .form-section,
-    .modal-actions {
-        padding: 15px 20px;
-    }
-}
-
 /* Loading State */
 .modal-content.loading {
     opacity: 0.6;
@@ -718,6 +733,24 @@ body {
     transition: opacity 0.2s;
 }
 
+/* Equipment Pieces Input */
+.equipment-pieces-input {
+    width: 80px;
+    padding: 6px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    text-align: center;
+    font-size: 1rem;
+    transition: all 0.2s;
+}
+
+.equipment-pieces-input:focus {
+    outline: none;
+    border-color: #1a56db;
+    background: #eff6ff;
+    box-shadow: 0 0 0 3px rgba(26, 86, 219, 0.1);
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .header-info {
@@ -748,5 +781,20 @@ body {
 
     .btn-add-employee {
         width: 100%;
+    }
+
+    .modal-content {
+        width: 95%;
+        margin: 10px;
+    }
+
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .modal-header,
+    .form-section,
+    .modal-actions {
+        padding: 15px 20px;
     }
 }

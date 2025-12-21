@@ -78,6 +78,31 @@ class JobMaterial(Base):
         }
 
 
+class JobEquipment(Base):
+    """Job-specific equipment with hourly rates"""
+
+    __tablename__ = "job_equipment"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    job_number = Column(String(50), nullable=False)
+    name = Column(String(255), nullable=False)
+    hourly_rate = Column(Numeric(10, 2), nullable=False)
+    active = Column(Boolean, default=True)
+
+    __table_args__ = (
+        UniqueConstraint("job_number", "name", name="unique_job_equipment"),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "job_number": self.job_number,
+            "name": self.name,
+            "hourly_rate": float(self.hourly_rate),
+            "active": self.active,
+        }
+
+
 class Employee(Base):
     """Employees who work on jobs - with full payroll data"""
 

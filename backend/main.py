@@ -14,11 +14,13 @@ from sqlalchemy.orm import Session
 from decimal import Decimal
 from contextlib import asynccontextmanager
 from sqlalchemy import text
+from union_report_generator import generate_all_union_reports
 
 from database import (
     get_session,
     Material,
     JobMaterial,
+    JobEquipment,
     LaborRole,
     DailyEntry,
     EntryLineItem,
@@ -135,6 +137,7 @@ class EquipmentRentalInput(BaseModel):
     quantity: float
     rate_period: str = "daily"
     unit_rate: Optional[float] = None
+    equipment_name: Optional[str] = None  # For job-specific equipment
 
 
 class DailyEntryInput(BaseModel):
@@ -284,6 +287,24 @@ def get_materials(job_number: Optional[str] = None, db: Session = Depends(get_db
 
     materials = sorted(materials, key=sort_key)
     return materials
+
+
+@app.get("/api/job-equipment/{job_number}")
+def get_job_equipment(job_number: str, db: Session = Depends(get_db)):
+    """Get job-specific equipment with hourly rates"""
+    equipment = (
+        db.query(JobEquipment)
+        .filter(JobEquipment.job_number == job_number, JobEquipment.active == True)
+        .order_by(JobEquipment.name)
+        .all()
+    )
+
+    if not equipment:
+        raise HTTPException(
+            status_code=404, detail=f"No equipment found for job {job_number}"
+        )
+
+    return [eq.to_dict() for eq in equipment]
 
 
 @app.get("/api/labor-roles", response_model=List[LaborRoleResponse])
@@ -439,6 +460,46 @@ def get_equipment_rentals(
     return rentals
 
 
+@app.get("/api/job-equipment/{job_number}")
+def get_job_equipment(job_number: str, db: Session = Depends(get_db)):
+    """Get job-specific equipment with hourly rates"""
+    try:
+        query = db.execute(
+            text(
+                """
+                SELECT id, name, hourly_rate, active
+                FROM job_equipment
+                WHERE job_number = :job_number AND active = 1
+                ORDER BY name
+                """
+            ),
+            {"job_number": job_number},
+        )
+
+        equipment = []
+        for row in query:
+            equipment.append(
+                {
+                    "id": row[0],
+                    "name": row[1],
+                    "hourly_rate": float(row[2]),
+                    "active": bool(row[3]),
+                }
+            )
+
+        if not equipment:
+            raise HTTPException(
+                status_code=404, detail=f"No equipment found for job {job_number}"
+            )
+
+        return equipment
+    except Exception as e:
+        print(f"Error loading job equipment: {e}")
+        raise HTTPException(
+            status_code=404, detail=f"No equipment configured for job {job_number}"
+        )
+
+
 @app.get("/api/entries/{job_number}/{entry_date}")
 def get_entry_by_date(job_number: str, entry_date: str, db: Session = Depends(get_db)):
     """Get a specific daily entry"""
@@ -454,6 +515,9 @@ def get_entry_by_date(job_number: str, entry_date: str, db: Session = Depends(ge
         return {"entry": None}
 
     return {"entry": entry.to_dict()}
+
+
+# In main.py, update the save function to look in the right place:
 
 
 @app.post("/api/entries")
@@ -494,23 +558,43 @@ def create_or_update_entry(entry_input: DailyEntryInput, db: Session = Depends(g
     # Add material line items
     for line_item_input in entry_input.line_items:
         if line_item_input.quantity > 0:
-            material = (
-                db.query(Material)
-                .filter(Material.id == line_item_input.material_id)
+            # ✅ Try job materials first, then fall back to regular materials
+            job_material = (
+                db.query(JobMaterial)
+                .filter(
+                    JobMaterial.id == line_item_input.material_id,
+                    JobMaterial.job_number == entry_input.job_number,
+                    JobMaterial.active == True,
+                )
                 .first()
             )
 
-            if not material:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Material ID {line_item_input.material_id} not found",
+            if job_material:
+                # Found in job materials
+                unit_price = (
+                    line_item_input.unit_price
+                    if line_item_input.unit_price is not None
+                    else job_material.unit_price
+                )
+            else:
+                # Try regular materials
+                material = (
+                    db.query(Material)
+                    .filter(Material.id == line_item_input.material_id)
+                    .first()
                 )
 
-            unit_price = (
-                line_item_input.unit_price
-                if line_item_input.unit_price
-                else material.unit_price
-            )
+                if not material:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f"Material ID {line_item_input.material_id} not found in job materials or general catalog",
+                    )
+
+                unit_price = (
+                    line_item_input.unit_price
+                    if line_item_input.unit_price is not None
+                    else material.unit_price
+                )
 
             line_item = EntryLineItem(
                 daily_entry_id=daily_entry.id,
@@ -524,50 +608,67 @@ def create_or_update_entry(entry_input: DailyEntryInput, db: Session = Depends(g
     if entry_input.equipment_items:
         for equip_item in entry_input.equipment_items:
             if equip_item.quantity > 0:
-                result = db.execute(
-                    text(
-                        """
-                        SELECT name, category, unit, daily_rate, weekly_rate, monthly_rate
-                        FROM equipment_rental_rates
-                        WHERE id = :equipment_id
-                    """
-                    ),
-                    {"equipment_id": equip_item.equipment_rental_id},
-                ).fetchone()
-
-                if not result:
-                    raise HTTPException(
-                        status_code=404,
-                        detail=f"Equipment rental ID {equip_item.equipment_rental_id} not found",
+                # Check if this is job-specific equipment (equipment_rental_id = 0)
+                # or traditional equipment rental (equipment_rental_id > 0)
+                if equip_item.equipment_rental_id == 0:
+                    # Job-specific equipment - use provided name and rate
+                    equipment_name = equip_item.equipment_name or "Job Equipment"
+                    equipment_entry = EquipmentRentalEntry(
+                        daily_entry_id=daily_entry.id,
+                        equipment_rental_id=0,
+                        quantity=Decimal(str(equip_item.quantity)),
+                        unit_rate=Decimal(str(equip_item.unit_rate)),
+                        equipment_name=equipment_name,
+                        equipment_category="EQUIPMENT",
+                        unit="Hour",
                     )
-
-                equipment_name = result[0]
-                equipment_category = result[1]
-                unit = result[2]
-
-                if equip_item.rate_period == "weekly":
-                    rate = result[4]
-                elif equip_item.rate_period == "monthly":
-                    rate = result[5]
+                    db.add(equipment_entry)
                 else:
-                    rate = result[3]
+                    # Traditional equipment rental rates
+                    result = db.execute(
+                        text(
+                            """
+                            SELECT name, category, unit, daily_rate, weekly_rate, monthly_rate
+                            FROM equipment_rental_rates
+                            WHERE id = :equipment_id
+                        """
+                        ),
+                        {"equipment_id": equip_item.equipment_rental_id},
+                    ).fetchone()
 
-                if rate is None:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"No {equip_item.rate_period} rate available for {equipment_name}",
+                    if not result:
+                        raise HTTPException(
+                            status_code=404,
+                            detail=f"Equipment rental ID {equip_item.equipment_rental_id} not found",
+                        )
+
+                    equipment_name = result[0]
+                    equipment_category = result[1]
+                    unit = result[2]
+
+                    if equip_item.rate_period == "weekly":
+                        rate = result[4]
+                    elif equip_item.rate_period == "monthly":
+                        rate = result[5]
+                    else:
+                        rate = result[3]
+
+                    if rate is None:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"No {equip_item.rate_period} rate available for {equipment_name}",
+                        )
+
+                    equipment_entry = EquipmentRentalEntry(
+                        daily_entry_id=daily_entry.id,
+                        equipment_rental_id=equip_item.equipment_rental_id,
+                        quantity=Decimal(str(equip_item.quantity)),
+                        unit_rate=Decimal(str(rate)),
+                        equipment_name=equipment_name,
+                        equipment_category=equipment_category,
+                        unit=unit,
                     )
-
-                equipment_entry = EquipmentRentalEntry(
-                    daily_entry_id=daily_entry.id,
-                    equipment_rental_id=equip_item.equipment_rental_id,
-                    quantity=Decimal(str(equip_item.quantity)),
-                    unit_rate=Decimal(str(rate)),
-                    equipment_name=equipment_name,
-                    equipment_category=equipment_category,
-                    unit=unit,
-                )
-                db.add(equipment_entry)
+                    db.add(equipment_entry)
 
     # Add labor entries
     if entry_input.labor_items:
@@ -677,6 +778,92 @@ def generate_daily_report(request: ReportRequest, db: Session = Depends(get_db))
         print(f"Error generating report: {e}")
         raise HTTPException(
             status_code=500, detail=f"Failed to generate report: {str(e)}"
+        )
+
+
+@app.post("/api/reports/union-reports")
+def generate_union_reports(request: ReportRequest, db: Session = Depends(get_db)):
+    """Generate all union-separated reports (DC9, DC11, DC35, Materials/Equipment)"""
+
+    try:
+        entry_date = request.start_date if request.start_date else None
+
+        if not entry_date:
+            raise HTTPException(
+                status_code=400, detail="Please provide a date (use start_date field)"
+            )
+
+        # Get the specific entry
+        entry = (
+            db.query(DailyEntry)
+            .filter(
+                DailyEntry.job_number == request.job_number,
+                DailyEntry.entry_date == entry_date,
+            )
+            .first()
+        )
+
+        if not entry:
+            raise HTTPException(
+                status_code=404, detail=f"No entry found for {entry_date}"
+            )
+
+        # Prepare timesheet data
+        timesheet_data = {
+            "job_number": request.job_number,
+            "entry_date": str(entry.entry_date),
+            "job_name": request.job_name or "",
+            "company_name": request.company_name,
+        }
+
+        # Prepare entry data with employee objects
+        entry_dict = entry.to_dict()
+
+        # Enhance labor entries with full employee objects
+        for labor in entry_dict["labor_entries"]:
+            if labor.get("employee_id"):
+                employee = (
+                    db.query(Employee)
+                    .filter(Employee.id == labor["employee_id"])
+                    .first()
+                )
+                if employee:
+                    labor["employee"] = employee.to_dict()
+
+        # Generate all reports
+        reports = generate_all_union_reports(
+            timesheet_data, entry_dict, logo_path="logo.png"
+        )
+
+        import io
+        import zipfile
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for report_name, pdf_buffer in reports.items():
+                report_filename = (
+                    f"JFW_LABOR_{report_name}_{request.job_number}_{entry_date}.pdf"
+                )
+                zf.writestr(report_filename, pdf_buffer.getvalue())
+
+        zip_buffer.seek(0)
+        filename = f"JFW_LABOR_REPORTS_{request.job_number}_{entry_date}.zip"
+
+        return StreamingResponse(
+            iter([zip_buffer.getvalue()]),
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error generating union reports: {e}")
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500, detail=f"Failed to generate union reports: {str(e)}"
         )
 
 

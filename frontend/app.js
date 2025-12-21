@@ -6,7 +6,7 @@ let materials = [];
 let laborRoles = [];
 let currentEntry = null;
 let laborRowCounter = 0;
-let equipmentRentals = [];
+let jobEquipment = [];
 
 // Helper function to format currency
 function formatCurrency(amount) {
@@ -20,10 +20,15 @@ async function init() {
     // Set today's date as default
     document.getElementById('entryDate').valueAsDate = new Date();
 
+    // Load last used job number from localStorage
+    const lastJobNumber = localStorage.getItem('tracktm_last_job_number');
+    if (lastJobNumber) {
+        document.getElementById('jobNumber').value = lastJobNumber;
+    }
+
     // Load catalogs
     await loadMaterials();
     await loadLaborRoles();
-    await loadEquipmentRentals();
 
     // Load employees if module is available
     if (window.EmployeesModule && window.EmployeesModule.init) {
@@ -35,7 +40,13 @@ async function init() {
     document.getElementById('newBtn').addEventListener('click', newEntry);
     document.getElementById('saveBtn').addEventListener('click', saveEntry);
     document.getElementById('generatePdfBtn').addEventListener('click', generatePDF);
-    document.getElementById('generateCon9CsvBtn').addEventListener('click', generateCon9CSV);
+    document.getElementById('generateUnionReportsBtn').addEventListener('click', generateUnionReports);
+
+    // Con9 CSV button (may not exist in older HTML)
+    const con9CsvBtn = document.getElementById('generateCon9CsvBtn');
+    if (con9CsvBtn) {
+        con9CsvBtn.addEventListener('click', generateCon9CSV);
+    }
 }
 
 // ============================================
@@ -72,16 +83,25 @@ async function loadLaborRoles() {
     }
 }
 
-async function loadEquipmentRentals() {
+async function loadJobEquipment(jobNumber) {
+    if (!jobNumber) {
+        jobEquipment = [];
+        return;
+    }
+
     try {
-        const response = await fetch(`${API_BASE}/equipment-rentals?year=2022`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const response = await fetch(`${API_BASE}/job-equipment/${jobNumber}`);
+        if (!response.ok) {
+            console.log(`No job-specific equipment for job ${jobNumber}`);
+            jobEquipment = [];
+            return;
+        }
         const data = await response.json();
-        equipmentRentals = data;
-        console.log(`Loaded ${equipmentRentals.length} equipment rental items`);
+        jobEquipment = data;
+        console.log(`Ã¢Å“â€œ Loaded ${jobEquipment.length} equipment items for job ${jobNumber}`);
     } catch (error) {
-        console.error('Error loading equipment rentals:', error);
-        equipmentRentals = [];
+        console.error('Error loading job equipment:', error);
+        jobEquipment = [];
     }
 }
 
@@ -100,8 +120,9 @@ async function loadEntry() {
 
     loadJobInfo(jobNumber);
 
-    // Reload materials for this job (may be job-specific)
+    // Reload catalogs for this job
     await loadMaterials();
+    await loadJobEquipment(jobNumber);
 
     try {
         const response = await fetch(`${API_BASE}/entries/${jobNumber}/${entryDate}`);
@@ -130,8 +151,9 @@ async function newEntry() {
     const jobNumber = document.getElementById('jobNumber').value;
     if (jobNumber) {
         loadJobInfo(jobNumber);
-        // Reload materials for this job (may be job-specific)
+        // Reload catalogs for this job
         await loadMaterials();
+        await loadJobEquipment(jobNumber);
     }
     currentEntry = null;
     displayForm([], [], []);
@@ -151,39 +173,30 @@ function displayForm(existingLineItems = [], existingLaborItems = [], existingEq
     const searchBar = createSearchBar();
     container.appendChild(searchBar);
 
-    // Materials by category
-    const byCategory = {};
-    materials.forEach(mat => {
-        if (!byCategory[mat.category]) byCategory[mat.category] = [];
-        byCategory[mat.category].push(mat);
-    });
+    // Single Materials Section - alphabetically sorted
+    const materialsSection = createMaterialsSection(existingLineItems);
+    container.appendChild(materialsSection);
 
-    Object.entries(byCategory).forEach(([category, items]) => {
-        const section = createCategorySection(category, items, existingLineItems);
-        container.appendChild(section);
-    });
-
-    // Equipment Rentals
-    if (equipmentRentals.length > 0) {
-        const equipmentSection = createEquipmentRentalSection(existingEquipmentItems);
+    // Simplified Equipment Section (if equipment exists for this job)
+    if (jobEquipment.length > 0) {
+        const equipmentSection = createSimplifiedEquipmentSection(existingEquipmentItems);
         container.appendChild(equipmentSection);
     }
 
-    // Labor
-    const laborSection = createLaborSection(existingLaborItems);
+    // Fixed Rate Labor - ONLY entries WITHOUT employee_id
+    const fixedRateLaborItems = existingLaborItems.filter(item => !item.employee_id);
+    const laborSection = createLaborSection(fixedRateLaborItems);
     container.appendChild(laborSection);
 
-    // â†“â†“â†“ ADD THESE LINES â†“â†“â†“
-    // Employees Section
+    // Burdened Rate Labor (Employees) - ONLY entries WITH employee_id
     const employeeEntries = existingLaborItems.filter(item => item.employee_id);
     const employeesSection = window.EmployeesModule.createSection(employeeEntries);
     container.appendChild(employeesSection);
-    // â†‘â†‘â†‘ END NEW SECTION â†‘â†‘â†‘
 
     document.getElementById('actionsBar').style.display = 'flex';
 
     setupQuantityListeners();
-    setupEquipmentListeners();
+    setupSimplifiedEquipmentListeners();
     setupSearchListeners();
     calculateTotal();
 }
@@ -207,22 +220,26 @@ function createSearchBar() {
     return searchBar;
 }
 
-function createCategorySection(category, items, existingLineItems) {
+function createMaterialsSection(existingLineItems = []) {
     const section = document.createElement('div');
     section.className = 'category-section';
 
     const header = document.createElement('div');
     header.className = 'category-header';
-    header.textContent = category;
+    header.textContent = 'MATERIALS';
     section.appendChild(header);
+
+    // Sort materials alphabetically by name
+    const sortedMaterials = [...materials].sort((a, b) =>
+        a.name.localeCompare(b.name)
+    );
 
     const table = document.createElement('table');
     table.className = 'materials-table';
     table.innerHTML = `
         <thead>
             <tr>
-                <th style="width: 40%">Material</th>
-                <th style="width: 10%">Unit</th>
+                <th style="width: 50%">Description</th>
                 <th style="width: 15%">QTY</th>
                 <th style="width: 15%">Price</th>
                 <th style="width: 20%; text-align: right;">Total</th>
@@ -232,7 +249,7 @@ function createCategorySection(category, items, existingLineItems) {
     `;
 
     const tbody = table.querySelector('tbody');
-    items.forEach(item => {
+    sortedMaterials.forEach(item => {
         const existingItem = existingLineItems.find(li => li.material_id === item.id);
         const quantity = existingItem ? existingItem.quantity : 0;
         const unitPrice = existingItem ? existingItem.unit_price : item.unit_price;
@@ -240,7 +257,6 @@ function createCategorySection(category, items, existingLineItems) {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td class="material-name">${item.name}</td>
-            <td class="material-unit">${item.unit}</td>
             <td>
                 <input 
                     type="number" 
@@ -257,7 +273,7 @@ function createCategorySection(category, items, existingLineItems) {
                     type="number" 
                     class="price-input" 
                     data-material-id="${item.id}"
-                    value="${unitPrice}"
+                    value="${parseFloat(unitPrice).toFixed(2)}"
                     min="0"
                     step="0.01"
                 />
@@ -273,95 +289,90 @@ function createCategorySection(category, items, existingLineItems) {
     return section;
 }
 
-function createEquipmentRentalSection(existingRentalItems = []) {
+function createSimplifiedEquipmentSection(existingEquipmentItems = []) {
     const section = document.createElement('div');
     section.className = 'category-section';
 
     const header = document.createElement('div');
     header.className = 'category-header';
-    header.textContent = 'EQUIPMENT RENTALS';
+    header.textContent = 'EQUIPMENT';
     section.appendChild(header);
 
-    const byCategory = {};
-    equipmentRentals.forEach(rental => {
-        if (!byCategory[rental.category]) byCategory[rental.category] = [];
-        byCategory[rental.category].push(rental);
-    });
-
-    Object.entries(byCategory).forEach(([category, items]) => {
-        const categoryTable = createEquipmentCategoryTable(category, items, existingRentalItems);
-        section.appendChild(categoryTable);
-    });
-
-    return section;
-}
-
-function createEquipmentCategoryTable(category, items, existingRentalItems) {
-    const wrapper = document.createElement('div');
-    wrapper.style.marginBottom = '15px';
-
-    const subHeader = document.createElement('div');
-    subHeader.style.fontWeight = '600';
-    subHeader.style.padding = '8px 0';
-    subHeader.style.color = '#6b7280';
-    subHeader.textContent = category;
-    wrapper.appendChild(subHeader);
+    // Sort equipment alphabetically
+    const sortedEquipment = [...jobEquipment].sort((a, b) =>
+        a.name.localeCompare(b.name)
+    );
 
     const table = document.createElement('table');
     table.className = 'materials-table';
     table.innerHTML = `
         <thead>
             <tr>
-                <th style="width: 45%">Equipment</th>
-                <th style="width: 10%">Unit</th>
-                <th style="width: 15%">QTY</th>
-                <th style="width: 15%">Daily Rate</th>
-                <th style="width: 15%; text-align: right;">Total</th>
+                <th style="width: 40%">Equipment</th>
+                <th style="width: 12%">Pieces</th>
+                <th style="width: 12%">Hours</th>
+                <th style="width: 16%">Hourly Rate</th>
+                <th style="width: 20%; text-align: right;">Total</th>
             </tr>
         </thead>
         <tbody></tbody>
     `;
 
     const tbody = table.querySelector('tbody');
-    items.forEach(item => {
-        const existingItem = existingRentalItems.find(ri => ri.equipment_rental_id === item.id);
-        const quantity = existingItem ? existingItem.quantity : 0;
-        const unitRate = existingItem ? existingItem.unit_rate : item.daily_rate;
+    sortedEquipment.forEach(item => {
+        // Find existing entry by matching equipment name
+        const existingItem = existingEquipmentItems.find(ei =>
+            ei.equipment_name === item.name
+        );
+
+        // Ã¢Å“â€¦ FIX: Default pieces to 1 if not specified
+        const pieces = (existingItem && existingItem.pieces) ? existingItem.pieces : 1;
+        const hours = existingItem ? existingItem.quantity : 0;
+        const hourlyRate = item.hourly_rate;
+
+        // Ã¢Å“â€¦ FIX: Calculate initial total properly
+        const initialTotal = pieces * hours * hourlyRate;
 
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td class="material-name">${item.name}</td>
-            <td class="material-unit">${item.unit}</td>
-            <td>
-                <input 
-                    type="number" 
-                    class="qty-input equipment-qty-input" 
-                    data-equipment-id="${item.id}"
-                    value="${quantity > 0 ? quantity : ''}"
-                    min="0"
-                    step="0.5"
-                    placeholder="0"
-                />
-            </td>
-            <td>
-                <input 
-                    type="number" 
-                    class="price-input equipment-rate-input" 
-                    data-equipment-id="${item.id}"
-                    value="${unitRate || item.daily_rate}"
-                    min="0"
-                    step="0.01"
-                />
-            </td>
-            <td class="item-total equipment-total" data-equipment-id="${item.id}">
-                $${(quantity * (unitRate || item.daily_rate)).toFixed(2)}
-            </td>
-        `;
+        <td class="material-name">${item.name}</td>
+        <td>
+            <input 
+                type="number" 
+                class="equipment-pieces-input" 
+                data-equipment-id="${item.id}"
+                data-equipment-name="${item.name}"
+                value="${pieces}"
+                min="1"
+                step="1"
+                placeholder="1"
+            />
+        </td>
+        <td>
+            <input 
+                type="number" 
+                class="equipment-hours-input" 
+                data-equipment-id="${item.id}"
+                data-equipment-name="${item.name}"
+                data-hourly-rate="${parseFloat(hourlyRate).toFixed(2)}"
+                value="${hours > 0 ? hours : ''}"
+                min="0"
+                step="0.5"
+                placeholder="0"
+            />
+        </td>
+        <td class="equipment-rate-display">
+            $${parseFloat(hourlyRate).toFixed(2)}
+        </td>
+        <td class="equipment-total" data-equipment-id="${item.id}">
+            $${initialTotal.toFixed(2)}
+        </td>
+    `;
         tbody.appendChild(row);
     });
 
-    wrapper.appendChild(table);
-    return wrapper;
+    section.appendChild(table);
+    return section;
 }
 
 function createLaborSection(existingLaborItems = []) {
@@ -372,7 +383,7 @@ function createLaborSection(existingLaborItems = []) {
     header.className = 'category-header collapsible-header';
     header.innerHTML = `
         <span>FIXED RATE LABOR</span>
-        <span class="collapse-icon">▶</span>
+        <span class="collapse-icon">Ã¢â€“Â¶</span>
     `;
     header.style.cursor = 'pointer';
     section.appendChild(header);
@@ -381,6 +392,22 @@ function createLaborSection(existingLaborItems = []) {
     const laborContent = document.createElement('div');
     laborContent.className = 'collapsible-content';
     laborContent.style.display = 'none'; // Start collapsed
+
+    // Add helper text
+    const helperText = document.createElement('div');
+    helperText.style.padding = '12px 15px';
+    helperText.style.background = '#eff6ff';
+    helperText.style.border = '1px solid #bfdbfe';
+    helperText.style.borderRadius = '6px';
+    helperText.style.margin = '10px';
+    helperText.style.fontSize = '0.875rem';
+    helperText.style.color = '#1e40af';
+    helperText.innerHTML = `
+        <strong>Note:</strong> For actual employees with payroll rates, use the 
+        <strong>BURDENED RATE LABOR</strong> section below. This section is for 
+        simple hourly rate entries only.
+    `;
+    laborContent.appendChild(helperText);
 
     const laborByRole = {};
     existingLaborItems.forEach(item => {
@@ -400,10 +427,10 @@ function createLaborSection(existingLaborItems = []) {
         const icon = header.querySelector('.collapse-icon');
         if (laborContent.style.display === 'none') {
             laborContent.style.display = 'block';
-            icon.textContent = '▼';
+            icon.textContent = 'Ã¢â€“Â¼';
         } else {
             laborContent.style.display = 'none';
-            icon.textContent = '▶';
+            icon.textContent = 'Ã¢â€“Â¶';
         }
     });
 
@@ -584,7 +611,7 @@ function updateEmployeeTotal(rowId, role) {
 // ============================================
 
 function setupQuantityListeners() {
-    document.querySelectorAll('.qty-input:not(.equipment-qty-input), .price-input:not(.equipment-rate-input)').forEach(input => {
+    document.querySelectorAll('.qty-input, .price-input').forEach(input => {
         input.addEventListener('input', (e) => {
             const materialId = e.target.dataset.materialId;
             updateLineTotal(materialId);
@@ -593,16 +620,33 @@ function setupQuantityListeners() {
     });
 }
 
-function setupEquipmentListeners() {
-    document.querySelectorAll('.equipment-qty-input, .equipment-rate-input').forEach(input => {
+function setupSimplifiedEquipmentListeners() {
+    document.querySelectorAll('.equipment-hours-input, .equipment-pieces-input').forEach(input => {
         input.addEventListener('input', (e) => {
             const equipmentId = e.target.dataset.equipmentId;
-            updateEquipmentTotal(equipmentId);
+
+            // Get both pieces and hours
+            const piecesInput = document.querySelector(`.equipment-pieces-input[data-equipment-id="${equipmentId}"]`);
+            const hoursInput = document.querySelector(`.equipment-hours-input[data-equipment-id="${equipmentId}"]`);
+
+            // Ã¢Å“â€¦ FIX: Use 1 as default for pieces, handle empty/NaN properly
+            const piecesValue = parseFloat(piecesInput.value);
+            const pieces = (isNaN(piecesValue) || piecesValue < 1) ? 1 : piecesValue;
+
+            const hours = parseFloat(hoursInput.value) || 0;
+            const hourlyRate = parseFloat(hoursInput.dataset.hourlyRate) || 0;
+
+            const total = pieces * hours * hourlyRate;
+
+            const totalCell = document.querySelector(`.equipment-total[data-equipment-id="${equipmentId}"]`);
+            if (totalCell) {
+                totalCell.textContent = `$${total.toFixed(2)}`;
+            }
+
             calculateTotal();
         });
     });
 }
-
 function setupSearchListeners() {
     const searchInput = document.getElementById('itemSearch');
     const clearBtn = document.getElementById('clearSearch');
@@ -636,9 +680,6 @@ function filterItems(searchTerm) {
         document.querySelectorAll('.materials-table tbody tr').forEach(row => {
             row.style.display = '';
         });
-        document.querySelectorAll('.category-section > div[style*="marginBottom"]').forEach(wrapper => {
-            wrapper.style.display = 'block';
-        });
         document.querySelectorAll('.labor-role-section').forEach(section => {
             section.style.display = 'block';
         });
@@ -648,49 +689,19 @@ function filterItems(searchTerm) {
     document.querySelectorAll('.category-section').forEach(section => {
         let sectionHasVisibleItems = false;
 
-        const subcategoryWrappers = section.querySelectorAll(':scope > div[style*="marginBottom"]');
-
-        if (subcategoryWrappers.length > 0) {
-            subcategoryWrappers.forEach(wrapper => {
-                let wrapperHasVisibleRows = false;
-                const subHeader = wrapper.querySelector('div[style*="fontWeight"]');
-                let headerMatches = false;
-                if (subHeader) {
-                    headerMatches = subHeader.textContent.toLowerCase().includes(term);
+        const rows = section.querySelectorAll('.materials-table tbody tr');
+        rows.forEach(row => {
+            const nameCell = row.querySelector('.material-name');
+            if (nameCell) {
+                const itemName = nameCell.textContent.toLowerCase();
+                if (itemName.includes(term)) {
+                    row.style.display = '';
+                    sectionHasVisibleItems = true;
+                } else {
+                    row.style.display = 'none';
                 }
-
-                const rows = wrapper.querySelectorAll('.materials-table tbody tr');
-                rows.forEach(row => {
-                    const nameCell = row.querySelector('.material-name');
-                    if (nameCell) {
-                        const itemName = nameCell.textContent.toLowerCase();
-                        if (itemName.includes(term) || headerMatches) {
-                            row.style.display = '';
-                            wrapperHasVisibleRows = true;
-                            sectionHasVisibleItems = true;
-                        } else {
-                            row.style.display = 'none';
-                        }
-                    }
-                });
-
-                wrapper.style.display = wrapperHasVisibleRows ? 'block' : 'none';
-            });
-        } else {
-            const rows = section.querySelectorAll('.materials-table tbody tr');
-            rows.forEach(row => {
-                const nameCell = row.querySelector('.material-name');
-                if (nameCell) {
-                    const itemName = nameCell.textContent.toLowerCase();
-                    if (itemName.includes(term)) {
-                        row.style.display = '';
-                        sectionHasVisibleItems = true;
-                    } else {
-                        row.style.display = 'none';
-                    }
-                }
-            });
-        }
+            }
+        });
 
         section.style.display = sectionHasVisibleItems ? 'block' : 'none';
     });
@@ -724,23 +735,11 @@ function updateLineTotal(materialId) {
     totalCell.textContent = formatCurrency(total);
 }
 
-function updateEquipmentTotal(equipmentId) {
-    const qtyInput = document.querySelector(`.equipment-qty-input[data-equipment-id="${equipmentId}"]`);
-    const rateInput = document.querySelector(`.equipment-rate-input[data-equipment-id="${equipmentId}"]`);
-    const totalCell = document.querySelector(`.equipment-total[data-equipment-id="${equipmentId}"]`);
-
-    const qty = parseFloat(qtyInput.value) || 0;
-    const rate = parseFloat(rateInput.value) || 0;
-    const total = qty * rate;
-
-    totalCell.textContent = formatCurrency(total);
-}
-
 function calculateTotal() {
     let grandTotal = 0;
 
     // Materials
-    document.querySelectorAll('.qty-input:not(.equipment-qty-input)').forEach(input => {
+    document.querySelectorAll('.qty-input').forEach(input => {
         const materialId = input.dataset.materialId;
         const qty = parseFloat(input.value) || 0;
         const priceInput = document.querySelector(`.price-input[data-material-id="${materialId}"]`);
@@ -748,31 +747,26 @@ function calculateTotal() {
         grandTotal += (qty * price);
     });
 
-    // Equipment Rentals
-    document.querySelectorAll('.equipment-qty-input').forEach(input => {
-        const equipmentId = input.dataset.equipmentId;
-        const qty = parseFloat(input.value) || 0;
-        const rateInput = document.querySelector(`.equipment-rate-input[data-equipment-id="${equipmentId}"]`);
-        const rate = parseFloat(rateInput.value) || 0;
-        grandTotal += (qty * rate);
+    // Equipment
+    document.querySelectorAll('.equipment-total').forEach(cell => {
+        const totalText = cell.textContent.trim();
+        const cleanText = totalText.replace(/[$,]/g, '');
+        const total = parseFloat(cleanText) || 0;
+        grandTotal += total;
     });
 
-    // Labor - Fixed to properly parse the text content
+    // Fixed Rate Labor
     document.querySelectorAll('.labor-total').forEach(cell => {
         const totalText = cell.textContent.trim();
         const cleanText = totalText.replace(/[$,]/g, '');
         const total = parseFloat(cleanText) || 0;
-        console.log('Labor total found:', totalText, 'â†’ parsed as:', total);
         grandTotal += total;
     });
 
-    // â†“â†“â†“ ADD THESE LINES â†“â†“â†“
-    // Employees
+    // Burdened Rate Labor (Employees)
     const employeeTotal = window.EmployeesModule.calculateTotal();
     grandTotal += employeeTotal;
-    // â†‘â†‘â†‘ END NEW SECTION â†‘â†‘â†‘
 
-    console.log('Grand total calculated:', grandTotal);
     document.getElementById('dailyTotal').textContent = formatCurrency(grandTotal);
 }
 
@@ -797,7 +791,7 @@ async function saveEntry() {
 
     // Collect line items (materials)
     const lineItems = [];
-    document.querySelectorAll('.qty-input:not(.equipment-qty-input)').forEach(input => {
+    document.querySelectorAll('.qty-input').forEach(input => {
         const qty = parseFloat(input.value) || 0;
         if (qty > 0) {
             const materialId = parseInt(input.dataset.materialId);
@@ -812,20 +806,20 @@ async function saveEntry() {
         }
     });
 
-    // Collect equipment rental items
+    // Collect equipment items
     const equipmentItems = [];
-    document.querySelectorAll('.equipment-qty-input').forEach(input => {
-        const qty = parseFloat(input.value) || 0;
-        if (qty > 0) {
-            const equipmentId = parseInt(input.dataset.equipmentId);
-            const rateInput = document.querySelector(`.equipment-rate-input[data-equipment-id="${equipmentId}"]`);
-            const unitRate = parseFloat(rateInput.value);
+    document.querySelectorAll('.equipment-hours-input').forEach(input => {
+        const hours = parseFloat(input.value) || 0;
+        if (hours > 0) {
+            const equipmentName = input.dataset.equipmentName;
+            const hourlyRate = parseFloat(input.dataset.hourlyRate);
 
             equipmentItems.push({
-                equipment_rental_id: equipmentId,
-                quantity: qty,
-                unit_rate: unitRate,
-                rate_period: "daily"
+                equipment_rental_id: 0, // Placeholder for job equipment
+                quantity: hours,
+                unit_rate: hourlyRate,
+                rate_period: "hourly",
+                equipment_name: equipmentName  // Send the equipment name
             });
         }
     });
@@ -855,17 +849,14 @@ async function saveEntry() {
         }
     });
 
-    // â†“â†“â†“ ADD THESE LINES â†“â†“â†“
     // Collect employee entries
     const employeeItems = window.EmployeesModule.collectEntries();
 
     // Combine all labor items
     const allLaborItems = [...laborItems, ...employeeItems];
-    // â†‘â†‘â†‘ END NEW SECTION â†‘â†‘â†‘
 
-    // â†“â†“â†“ CHANGE THIS LINE â†“â†“â†“
     if (lineItems.length === 0 && allLaborItems.length === 0 && equipmentItems.length === 0) {
-        alert('Please enter at least one material quantity, equipment, or labor hours');
+        alert('Please enter at least one material quantity, equipment hours, or labor hours');
         return;
     }
 
@@ -878,7 +869,7 @@ async function saveEntry() {
                 entry_date: entryDate,
                 line_items: lineItems,
                 equipment_items: equipmentItems,
-                labor_items: allLaborItems  // â† CHANGE from laborItems to allLaborItems
+                labor_items: allLaborItems
             })
         });
 
@@ -1013,12 +1004,67 @@ async function generateCon9CSV() {
     }
 }
 
+
+async function generateUnionReports() {
+    const jobNumber = document.getElementById('jobNumber').value;
+    const entryDate = document.getElementById('entryDate').value;
+    const companyName = document.getElementById('companyName').value || 'Tri-State Painting, LLC (TSI)';
+    const jobName = document.getElementById('jobName').value || '';
+
+    if (!jobNumber || !entryDate) {
+        alert('Please load an entry first');
+        return;
+    }
+
+    const formData = {
+        job_number: jobNumber,
+        job_name: jobName,
+        company_name: companyName,
+        company_address_line1: '612 West Main Street Unit 2',
+        company_address_line2: 'Tilton, NH 03276',
+        company_phone: '(603) 286-7657',
+        company_fax: '(603) 286-7882',
+        start_date: entryDate
+    };
+
+    try {
+        showMessage('Generating union reports...', 'info');
+
+        const response = await fetch(`${API_BASE}/reports/union-reports`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData)
+        });
+
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `JFW_LABOR_REPORTS_${jobNumber}_${entryDate}.zip`; // Ã¢Å“â€¦ CHANGED TO .zip
+
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+
+            showMessage('Union reports generated successfully!', 'success');
+        } else {
+            const error = await response.json();
+            throw new Error(error.detail || 'Unknown error');
+        }
+    } catch (error) {
+        console.error('Error generating union reports:', error);
+        alert('Failed to generate union reports: ' + error.message);
+    }
+}
 // ============================================
 // UTILITY FUNCTIONS
 // ============================================
 
 function saveJobInfo(jobNumber, companyName, jobName) {
     if (!jobNumber) return;
+    localStorage.setItem('tracktm_last_job_number', jobNumber); // Remember last used job
     const jobInfo = { companyName, jobName };
     localStorage.setItem(`tracktm_job_${jobNumber}`, JSON.stringify(jobInfo));
 }

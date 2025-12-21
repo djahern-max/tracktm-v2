@@ -21,7 +21,7 @@
                 </div>
                 <div class="info-group">
                     <label>Job Number:</label>
-                    <input type="text" id="jobNumber" value="2317" />
+                    <input type="text" id="jobNumber" value="" placeholder="Enter job number" />
                 </div>
                 <div class="info-group">
                     <label>Job Name:</label>
@@ -47,6 +47,7 @@
             <button id="generatePdfBtn" class="btn btn-success">Generate PDF</button>
             <button id="generateInvoiceBtn" class="btn btn-success">Generate Invoice</button>
             <button id="generateCon9CsvBtn" class="btn btn-success">Export Con9 CSV</button>
+            <button id="generateUnionReportsBtn" class="btn btn-success">Union Reports</button>
             <div class="total-display">
                 <span>Daily Total:</span>
                 <strong id="dailyTotal">$0.00</strong>
@@ -211,9 +212,9 @@
         // Just verify it loaded
         document.addEventListener('DOMContentLoaded', function () {
             if (window.InvoiceModule && window.InvoiceModule.open) {
-                console.log('âœ… Invoice module ready');
+                console.log('Ã¢Å“â€¦ Invoice module ready');
             } else {
-                console.error('âŒ Invoice module failed to load');
+                console.error('Ã¢ÂÅ’ Invoice module failed to load');
             }
         });
     </script>
